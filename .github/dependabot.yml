@@ -35,3 +35,7 @@ updates:
       - /apps/frontend
       - /apps/hosted-agent
     schedule: { interval: weekly }
+    ignore:
+      # Runtime versions are pinned deliberately (Python 3.12, Node 20) — bump by hand.
+      - dependency-name: python
+      - dependency-name: node
