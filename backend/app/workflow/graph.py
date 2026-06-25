@@ -21,6 +21,7 @@ from app.workflow.agents import (
     build_retrieve_agent,
     build_triage_agent,
 )
+from app.workflow.escalation import EscalationExecutor
 from app.workflow.memory import build_memory_provider
 
 
@@ -36,18 +37,18 @@ def build_helpdesk_workflow(thread_id: str | None = None) -> Workflow:
     resolve = build_resolve_agent(
         credential, context_providers=[memory] if memory else None
     )
+    escalate = EscalationExecutor()
 
-    # No explicit output_from/intermediate_output_from: matching the official
-    # AG-UI workflow HITL example. With output_from=[resolve], the resolve
-    # agent's response (including an approval tool call) was re-emitted, which
-    # produced a duplicate TOOL_CALL_START. Step streaming still works (it comes
-    # from executor STEP/activity events, not the output config).
+    # triage -> retrieve -> resolve -> escalate. The escalate node turns a
+    # "TICKET:" signal from resolve into a human-approval interrupt (request_info)
+    # and only opens the ticket once approved. No explicit output_from: it caused
+    # duplicate TOOL_CALL_START; step streaming comes from executor STEP events.
     return (
         WorkflowBuilder(
             name="HelpdeskConcierge",
-            description="Triage -> retrieve -> resolve helpdesk workflow.",
+            description="Triage -> retrieve -> resolve -> escalate helpdesk workflow.",
             start_executor=triage,
         )
-        .add_chain([triage, retrieve, resolve])
+        .add_chain([triage, retrieve, resolve, escalate])
         .build()
     )
