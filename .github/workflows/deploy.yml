@@ -1,9 +1,15 @@
 name: Deploy (Azure Container Apps)
 
-# Manual deploy of the backend + frontend to Azure Container Apps via azd.
+# Deploys the backend + frontend to Azure Container Apps via azd. Two entrypoints:
+#   • release: published — release-please cut a release (see release.yml) → deploy.
+#   • workflow_dispatch  — manual, ad-hoc deploy.
+# Both stop at the `production` Environment gate below until a reviewer approves,
+# so cutting a release never deploys on its own — a human always confirms.
 # Does NOT redeploy the hosted agent (that would reset its content-safety guardrail).
 # Requires Azure OIDC + repo vars/secrets — see CONTRIBUTING.md › CI/CD setup.
 on:
+  release:
+    types: [published]
   workflow_dispatch:
     inputs:
       services:
@@ -49,7 +55,7 @@ jobs:
       - name: Provision (idempotent) + deploy selected services
         run: |
           azd provision --no-prompt
-          for svc in ${{ inputs.services }}; do
+          for svc in ${{ inputs.services || 'backend web' }}; do
             azd deploy "$svc" --no-prompt
           done
       - name: Web URL
