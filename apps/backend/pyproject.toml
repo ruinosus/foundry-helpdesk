@@ -3,7 +3,7 @@ name = "foundry-helpdesk-backend"
 version = "0.1.0"
 description = "Foundry Helpdesk backend — multi-agent workflow over AG-UI"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.13"
 dependencies = [
     "agent-framework>=1.9.0",
     "agent-framework-ag-ui>=1.0.0rc5",

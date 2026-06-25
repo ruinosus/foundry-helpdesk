@@ -8,6 +8,12 @@ updates:
     groups:
       python:
         patterns: ["*"]
+    ignore:
+      # Version-pinned transitively by agent-framework — let the framework drive
+      # them; independent bumps make the resolution unsatisfiable.
+      - dependency-name: azure-search-documents
+      - dependency-name: fastapi
+      - dependency-name: agent-framework*
 
   # Hosted agent (pip / requirements.txt)
   - package-ecosystem: pip
