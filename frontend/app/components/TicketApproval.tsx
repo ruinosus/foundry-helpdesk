@@ -35,10 +35,23 @@ export function TicketApproval() {
   useInterrupt({
     agentId: "helpdesk",
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    render: ({ interrupt, resolve }: any) => {
-      const value = interrupt?.value ?? {};
-      // request_data is the TicketApprovalRequest dataclass -> { summary }.
-      const summary = value.summary ?? value.data?.summary ?? "(see debug)";
+    render: (props: any) => {
+      // TEMP: confirm the hook fires and inspect the payload shape.
+      // eslint-disable-next-line no-console
+      console.log("[TicketApproval] useInterrupt render fired:", props);
+      const { interrupt, resolve } = props;
+      const value = interrupt?.value ?? props?.event?.value ?? {};
+      // The interrupt value may be the request data object, or a JSON string.
+      let data: any = value;
+      if (typeof value === "string") {
+        try {
+          data = JSON.parse(value);
+        } catch {
+          data = {};
+        }
+      }
+      const summary =
+        data.summary ?? data.data?.summary ?? data.value?.summary ?? "(see debug)";
 
       const respond = (approved: boolean) => resolve(approved);
 
@@ -63,7 +76,7 @@ export function TicketApproval() {
               debug: interrupt
             </summary>
             <pre style={{ fontSize: 11, overflow: "auto", maxHeight: 200 }}>
-              {JSON.stringify(interrupt, null, 2)}
+              {JSON.stringify(props, null, 2)}
             </pre>
           </details>
         </div>
