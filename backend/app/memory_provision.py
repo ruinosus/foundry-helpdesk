@@ -42,7 +42,10 @@ async def main() -> None:
 
         store = await client.beta.memory_stores.create(
             name=name,
-            definition=MemoryStoreDefaultDefinition(chat_model=settings.foundry_model),
+            definition=MemoryStoreDefaultDefinition(
+                chat_model=settings.foundry_model,
+                embedding_model=settings.foundry_embedding_model,
+            ),
             description="Helpdesk per-user memory (developer preferences + recurring resolutions).",
         )
         print(f"Created memory store '{store.name}'.")
