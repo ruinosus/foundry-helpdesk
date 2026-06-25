@@ -1,0 +1,22 @@
+# azd configuration — Foundry Helpdesk.
+#
+# SKELETON ONLY. Not yet exercised: azd is not installed in this environment and
+# no Azure subscription is wired up. Before running `azd up`, verify the schema
+# and Foundry extension wiring against:
+#   https://learn.microsoft.com/azure/developer/azure-developer-cli/
+#   https://github.com/microsoft-foundry/foundry-samples
+#
+# TODO: verify azure.yaml schema + Foundry (azd ai) extension fields before first `azd up`.
+name: foundry-helpdesk
+metadata:
+  template: foundry-helpdesk@0.1.0
+
+services:
+  backend:
+    project: ./backend
+    language: python
+    host: containerapp
+  frontend:
+    project: ./frontend
+    language: js
+    host: containerapp

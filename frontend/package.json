@@ -1,0 +1,27 @@
+{
+  "name": "foundry-helpdesk-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ag-ui/client": "^0.0.57",
+    "@copilotkit/react-core": "^1.61.2",
+    "@copilotkit/react-ui": "^1.61.2",
+    "@copilotkit/runtime": "^1.61.2",
+    "next": "^15.5.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "^5.6.0"
+  }
+}

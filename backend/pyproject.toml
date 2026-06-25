@@ -1,0 +1,26 @@
+[project]
+name = "foundry-helpdesk-backend"
+version = "0.1.0"
+description = "Foundry Helpdesk backend — multi-agent workflow over AG-UI"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "agent-framework>=1.9.0",
+    "agent-framework-ag-ui>=1.0.0rc5",
+    "azure-ai-projects>=2.2.0",
+    "azure-identity>=1.25.3",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "pydantic-settings>=2.6.0",
+    "python-dotenv>=1.0.0",
+]
+
+[tool.uv]
+prerelease = "allow"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
