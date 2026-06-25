@@ -1,20 +1,17 @@
 "use client";
 
-// Phase 2: multi-agent workflow on CopilotKit v2.
-// The v2 CopilotKitProvider honors `renderActivityMessages`, which the legacy
-// <CopilotKit> provider ignored — that's why the executor steps never rendered.
-// Each triage/retrieve/resolve step now renders inline as it runs, then the
-// final grounded answer streams.
+// Phase 2: multi-agent workflow on CopilotKit v2. The WorkflowSteps panel
+// subscribes to the agent's events and lights up triage -> retrieve -> resolve
+// as they run, marking them all done when the run finishes; the grounded answer
+// streams in the chat below. Generative UI + approval cards (HITL) arrive in
+// Phase 4.
 
 import { CopilotKitProvider, CopilotChat } from "@copilotkit/react-core/v2";
-import { executorActivityRenderer } from "./components/ExecutorActivity";
+import { WorkflowSteps } from "./components/WorkflowSteps";
 
 export default function Page() {
   return (
-    <CopilotKitProvider
-      runtimeUrl="/api/copilotkit"
-      renderActivityMessages={[executorActivityRenderer] as never}
-    >
+    <CopilotKitProvider runtimeUrl="/api/copilotkit">
       <main
         style={{
           height: "100vh",
@@ -27,6 +24,7 @@ export default function Page() {
         <h1 style={{ padding: "16px 24px 8px", fontFamily: "system-ui" }}>
           Helpdesk Concierge
         </h1>
+        <WorkflowSteps />
         <div style={{ flex: 1, minHeight: 0 }} className="copilotkit-chat-host">
           <CopilotChat agentId="helpdesk" />
         </div>
