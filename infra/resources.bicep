@@ -42,6 +42,9 @@ param embeddingCapacity int = 20
 @description('Azure AI Search SKU. Basic is the floor for agentic retrieval (managed identity).')
 param searchSkuName string = 'basic'
 
+@description('Region for Azure AI Search. Empty falls back to the main location; override if a region is out of Search capacity.')
+param searchLocation string = ''
+
 var accountName = 'aif-helpdesk-${resourceToken}'
 var projectName = 'helpdesk-concierge'
 var searchName = 'srch-helpdesk-${resourceToken}'
@@ -55,6 +58,8 @@ var roleSearchServiceContributor = '7ca78c08-252a-4471-8644-bb5ff32d4ba0' // cre
 var roleSearchIndexDataReader = '1407120a-92aa-4202-b7e9-c0e197c71c8f' // query (retrieve) indexes
 var roleStorageBlobDataReader = '2a2b9908-6ea1-4ae2-8e65-a410df84e7d1' // search MI reads corpus blobs
 var roleStorageBlobDataContributor = 'ba92f5b4-2d11-453d-a403-e96b0029c9fe' // caller uploads corpus blobs
+
+var searchRegion = empty(searchLocation) ? location : searchLocation
 
 // ---------------------------------------------------------------------------
 // Foundry account + project + model deployments (Phase 0, extended w/ embedding)
@@ -146,7 +151,7 @@ resource corpusContainer 'Microsoft.Storage/storageAccounts/blobServices/contain
 
 resource search 'Microsoft.Search/searchServices@2024-06-01-preview' = {
   name: searchName
-  location: location
+  location: searchRegion
   tags: tags
   sku: { name: searchSkuName }
   identity: { type: 'SystemAssigned' }

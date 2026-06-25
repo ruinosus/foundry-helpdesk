@@ -23,7 +23,11 @@ param principalId string = ''
 @description('Model deployment name, surfaced to the app as FOUNDRY_MODEL.')
 param modelDeploymentName string = 'gpt-4.1-mini'
 
+@description('Optional region override for Azure AI Search (set AZURE_SEARCH_LOCATION if eastus2 is out of Search capacity). Falls back to location.')
+param searchLocation string = ''
+
 var resourceToken = toLower(uniqueString(subscription().id, environmentName, location))
+var effectiveSearchLocation = empty(searchLocation) ? location : searchLocation
 var tags = { 'azd-env-name': environmentName }
 
 resource rg 'Microsoft.Resources/resourceGroups@2024-03-01' = {
@@ -41,6 +45,7 @@ module resources 'resources.bicep' = {
     resourceToken: resourceToken
     principalId: principalId
     modelDeploymentName: modelDeploymentName
+    searchLocation: effectiveSearchLocation // region override for AI Search capacity
   }
 }
 
