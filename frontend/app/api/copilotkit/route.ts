@@ -1,8 +1,9 @@
-// CopilotKit runtime route — bridges the browser to the backend AG-UI endpoint,
-// forwarding the user's Entra ID bearer token so the backend can do the OBO
-// exchange and act as the signed-in user.
+// CopilotKit runtime route — bridges the browser to the backend AG-UI endpoint.
 //
-// Built per request so each call carries that request's Authorization header.
+// The CopilotKit runtime already forwards the Authorization header that the
+// CopilotKitProvider sends, so we must NOT set it again on the HttpAgent —
+// doing so produced a duplicated "Bearer x, Bearer x" header that failed JWT
+// parsing on the backend.
 
 import {
   CopilotRuntime,
@@ -14,18 +15,13 @@ import { NextRequest } from "next/server";
 
 const AGUI_URL = process.env.AGUI_URL ?? "http://localhost:8000/helpdesk";
 
+const runtime = new CopilotRuntime({
+  agents: {
+    helpdesk: new HttpAgent({ url: AGUI_URL }),
+  },
+});
+
 export const POST = async (req: NextRequest) => {
-  const authorization = req.headers.get("authorization") ?? undefined;
-
-  const runtime = new CopilotRuntime({
-    agents: {
-      helpdesk: new HttpAgent({
-        url: AGUI_URL,
-        headers: authorization ? { Authorization: authorization } : {},
-      }),
-    },
-  });
-
   const { handleRequest } = copilotRuntimeNextJSAppRouterEndpoint({
     runtime,
     serviceAdapter: new ExperimentalEmptyAdapter(),
