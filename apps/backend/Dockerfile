@@ -1,7 +1,7 @@
 # Backend container (Azure Container Apps). FastAPI + AG-UI on :8000.
 # Built/pushed by azd; runs as the app's managed identity (DefaultAzureCredential
 # picks it up) — for OBO the Entra API client id/secret come from env.
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 WORKDIR /app
 
