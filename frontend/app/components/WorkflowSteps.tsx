@@ -9,7 +9,10 @@
 // useAgent lives in @copilotkit/react-core/v2/headless; the agent is an
 // @ag-ui/client AbstractAgent whose subscribe() exposes these hooks.
 
-import { useAgent } from "@copilotkit/react-core/v2/headless";
+// Import from /v2 (same entry as CopilotKitProvider) so the CopilotKit context
+// is shared — importing useAgent from /v2/headless uses a separate context copy
+// and throws "useCopilotKit must be used within CopilotKitProvider".
+import { useAgent } from "@copilotkit/react-core/v2";
 import { useEffect, useState } from "react";
 
 const STEPS = [
