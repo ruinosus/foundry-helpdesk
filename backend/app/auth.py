@@ -43,6 +43,9 @@ if settings.auth_enabled:
         app_client_id=settings.entra_api_client_id,
         tenant_id=settings.entra_tenant_id,
         scopes={settings.entra_api_scope: "access_as_user"},
+        # The dev account is a guest (personal MS account invited to the tenant);
+        # allow guests so it can sign in. Tighten for a production tenant.
+        allow_guest_users=True,
     )
 
 
