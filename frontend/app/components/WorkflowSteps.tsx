@@ -48,6 +48,25 @@ export function WorkflowSteps() {
 
   const hasAny = Object.keys(status).length > 0;
 
+  // TEMP debug: reveal what useCopilotChat actually exposes so we can wire the
+  // activity detection to the real shape. Remove once the steps light up.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const dbgMsgs: any[] = chat?.messages ?? chat?.visibleMessages ?? [];
+  const debug = {
+    chatKeys: chat ? Object.keys(chat) : null,
+    messagesLen: dbgMsgs.length,
+    detectedStatus: status,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    lastMessages: dbgMsgs.slice(-8).map((m: any) => ({
+      keys: Object.keys(m ?? {}),
+      role: m?.role,
+      type: m?.type,
+      activityType: m?.activityType,
+      executor_id: m?.content?.executor_id,
+      status: m?.content?.status,
+    })),
+  };
+
   function stateFor(id: string): StepState {
     const s = status[id];
     if (s === "completed") return "done";
@@ -102,6 +121,25 @@ export function WorkflowSteps() {
           );
         })}
       </ol>
+
+      <details style={{ marginTop: 10 }}>
+        <summary style={{ fontSize: 11, color: "#94a3b8", cursor: "pointer" }}>
+          debug: chat shape
+        </summary>
+        <pre
+          style={{
+            fontSize: 11,
+            background: "#0f172a",
+            color: "#e2e8f0",
+            padding: 10,
+            borderRadius: 8,
+            overflow: "auto",
+            maxHeight: 280,
+          }}
+        >
+          {JSON.stringify(debug, null, 2)}
+        </pre>
+      </details>
     </section>
   );
 }
