@@ -127,9 +127,27 @@ def upload_corpus(credential: TokenCredential) -> int:
     return len(files)
 
 
+def _validate_storage_resource_id(rid: str) -> None:
+    ok = (
+        rid.startswith("/subscriptions/")
+        and "/resourceGroups/" in rid
+        and "/providers/Microsoft.Storage/storageAccounts/" in rid
+        and "..." not in rid
+    )
+    if not ok:
+        sys.exit(
+            "AZURE_STORAGE_RESOURCE_ID is not a full ARM resource id:\n"
+            f"  {rid}\n"
+            "It must look like /subscriptions/<sub>/resourceGroups/<rg>/providers/"
+            "Microsoft.Storage/storageAccounts/<name> (no '...').\n"
+            "Get the real value with:  azd env get-values | grep AZURE_STORAGE_RESOURCE_ID"
+        )
+
+
 def create_knowledge_source(index_client: SearchIndexClient) -> None:
     openai_endpoint = _require("AZURE_AI_OPENAI_ENDPOINT", settings.azure_ai_openai_endpoint)
     storage_id = _require("AZURE_STORAGE_RESOURCE_ID", settings.azure_storage_resource_id)
+    _validate_storage_resource_id(storage_id)
 
     # ResourceId=<...>; tells Search to read blobs via its managed identity (keyless).
     knowledge_source = AzureBlobKnowledgeSource(
