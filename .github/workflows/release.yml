@@ -1,0 +1,27 @@
+name: Release
+
+# Release-please reads the Conventional Commits on main and maintains a rolling
+# "release PR" that bumps the version + regenerates CHANGELOG.md. Merging that PR
+# cuts a git tag + GitHub Release — which is what gates the production deploy
+# (see deploy.yml › on.release). No deploy happens here; this only cuts the release.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write # create tags + releases + the release PR's commits
+  pull-requests: write # open/maintain the release PR
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    name: Maintain release PR / cut release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v4
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
