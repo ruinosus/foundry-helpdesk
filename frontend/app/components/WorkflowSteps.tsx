@@ -1,15 +1,15 @@
 "use client";
 
-// Live view of the multi-agent workflow. Driven by useCoAgent's `running` +
-// `nodeName` (the current executor the AG-UI workflow is on). As the backend
-// runs triage -> retrieve -> resolve, nodeName advances and the steps light up.
+// Live view of the multi-agent workflow. Driven by useCoAgent's `running`,
+// `nodeName` (current executor) and `state` (accumulated workflow state).
 //
-// This is the Phase 2 green signal: the 3 steps appear as they execute, not just
-// the final answer. (Even if nodeName lags, the per-step outputs still stream
-// into the chat below.)
+// We persist every executor we've seen active so the steps accumulate
+// triage -> retrieve -> resolve even when transitions are fast. The collapsible
+// "debug" dump shows the raw coagent state so we can wire richer per-step
+// rendering to whatever the backend actually emits.
 
 import { useCoAgent } from "@copilotkit/react-core";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const STEPS = [
   { id: "triage", label: "Triage", desc: "Classify intent & urgency" },
@@ -27,20 +27,35 @@ const DOT: Record<StepState, string> = {
 };
 
 export function WorkflowSteps() {
-  const { running, nodeName } = useCoAgent({ name: "helpdesk" });
+  const { running, nodeName, state } = useCoAgent({ name: "helpdesk" });
   const [hasRun, setHasRun] = useState(false);
+  const [seen, setSeen] = useState<string[]>([]);
+  const seenRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (running) setHasRun(true);
-  }, [running]);
+    // reset the per-run progress when a new run starts
+    if (running && nodeName === STEPS[0].id) {
+      seenRef.current = new Set();
+      setSeen([]);
+    }
+  }, [running, nodeName]);
+
+  useEffect(() => {
+    if (running && nodeName && !seenRef.current.has(nodeName)) {
+      seenRef.current.add(nodeName);
+      setSeen(Array.from(seenRef.current));
+    }
+  }, [running, nodeName]);
 
   const activeIdx = STEPS.findIndex((s) => s.id === nodeName);
 
   function stateFor(i: number): StepState {
+    const id = STEPS[i].id;
     if (running) {
-      if (activeIdx < 0) return i === 0 ? "active" : "pending"; // running, node unknown yet
-      if (i < activeIdx) return "done";
       if (i === activeIdx) return "active";
+      if (seen.includes(id)) return "done";
+      if (activeIdx >= 0 && i < activeIdx) return "done";
       return "pending";
     }
     return hasRun ? "done" : "idle";
@@ -56,6 +71,7 @@ export function WorkflowSteps() {
     >
       <div style={{ fontSize: 12, color: "#64748b", marginBottom: 8 }}>
         Workflow {running ? "· running…" : hasRun ? "· done" : "· idle"}
+        {nodeName ? ` · node: ${nodeName}` : ""}
       </div>
       <ol
         style={{
@@ -98,6 +114,26 @@ export function WorkflowSteps() {
           );
         })}
       </ol>
+
+      {/* Temporary: shows the raw coagent state so we can wire per-step content. */}
+      <details style={{ marginTop: 10 }}>
+        <summary style={{ fontSize: 11, color: "#94a3b8", cursor: "pointer" }}>
+          debug: coagent state
+        </summary>
+        <pre
+          style={{
+            fontSize: 11,
+            background: "#0f172a",
+            color: "#e2e8f0",
+            padding: 10,
+            borderRadius: 8,
+            overflow: "auto",
+            maxHeight: 240,
+          }}
+        >
+          {JSON.stringify({ nodeName, running, seen, state }, null, 2)}
+        </pre>
+      </details>
     </section>
   );
 }
