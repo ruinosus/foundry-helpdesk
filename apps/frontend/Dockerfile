@@ -1,5 +1,5 @@
 # Frontend container (Azure Container Apps). Next.js 15 standalone server on :3000.
-FROM node:20-slim AS build
+FROM node:26-slim AS build
 WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm ci
@@ -8,7 +8,7 @@ COPY . .
 # them as build args / env when building the image.
 RUN npm run build
 
-FROM node:20-slim AS run
+FROM node:26-slim AS run
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
