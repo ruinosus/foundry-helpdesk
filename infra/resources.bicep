@@ -1,10 +1,13 @@
 // Foundry Helpdesk — resource-group-scoped resources.
 //
-// Foundry account (kind AIServices, project management on) + project +
-// gpt-4.1-mini deployment + "Azure AI User" data-plane role for the caller.
+// Phase 0: Foundry account + project + gpt-4.1-mini + caller data-plane role.
+// Phase 1: Azure AI Search (Foundry IQ knowledge base), Storage for the corpus,
+//          an embedding deployment, and the role assignments that let the search
+//          managed identity reach the model + blobs, and the caller build/query
+//          the knowledge base. All keyless (managed identity / Entra ID).
 //
-// apiVersions/types verified against microsoft-foundry/foundry-samples 00-basic
-// and learn.microsoft.com/azure/foundry/how-to/create-resource-template.
+// apiVersions/types verified against microsoft-foundry/foundry-samples 00-basic,
+// the Foundry Bicep quickstart, and the Azure AI Search agentic-retrieval docs.
 
 @description('Primary location for all resources.')
 param location string
@@ -12,28 +15,50 @@ param location string
 @description('Tags applied to every resource.')
 param tags object = {}
 
-@description('Short unique token to make the (globally-unique) account name unique.')
+@description('Short unique token to make globally-unique names unique.')
 param resourceToken string
 
-@description('Principal granted Azure AI User (data-plane). Empty string skips the assignment.')
+@description('Principal granted data-plane roles (the deploying user). Empty skips assignments.')
 param principalId string = ''
 
-@description('Model deployment name (must match the app FOUNDRY_MODEL).')
+@description('Chat model deployment name (must match the app FOUNDRY_MODEL).')
 param modelDeploymentName string = 'gpt-4.1-mini'
 
-@description('Model version for gpt-4.1-mini.')
+@description('Chat model version for gpt-4.1-mini.')
 param modelVersion string = '2025-04-14'
 
-@description('Deployment capacity in thousands of tokens-per-minute. Lower if you hit quota.')
+@description('Chat deployment capacity (thousands of TPM). Lower if you hit quota.')
 param modelCapacity int = 30
 
-// Account name doubles as customSubDomainName, which must be globally unique.
+@description('Embedding model used to vectorize the knowledge base corpus.')
+param embeddingModelName string = 'text-embedding-3-large'
+
+@description('Embedding model version.')
+param embeddingModelVersion string = '1'
+
+@description('Embedding deployment capacity (thousands of TPM).')
+param embeddingCapacity int = 50
+
+@description('Azure AI Search SKU. Basic is the floor for agentic retrieval (managed identity).')
+param searchSkuName string = 'basic'
+
 var accountName = 'aif-helpdesk-${resourceToken}'
 var projectName = 'helpdesk-concierge'
+var searchName = 'srch-helpdesk-${resourceToken}'
+var storageName = 'sthelpdesk${resourceToken}'
+var corpusContainerName = 'corpus'
 
-// "Azure AI User" (renamed "Foundry User", same GUID) — data-plane inference with Entra ID.
-// Owner does NOT grant data-plane access, so without this you'd get 401 at inference time.
-var azureAiUserRoleId = '53ca6127-db72-4b80-b1b0-d745d6d5456d'
+// Built-in role definition GUIDs (stable Azure identifiers).
+var roleAzureAiUser = '53ca6127-db72-4b80-b1b0-d745d6d5456d' // Azure AI User / Foundry User (Foundry data plane)
+var roleCognitiveServicesUser = 'a97b65f3-24c7-4388-baec-2e87135dc908' // Cognitive Services User (call model deployments)
+var roleSearchServiceContributor = '7ca78c08-252a-4471-8644-bb5ff32d4ba0' // create knowledge bases/sources
+var roleSearchIndexDataReader = '1407120a-92aa-4202-b7e9-c0e197c71c8f' // query (retrieve) indexes
+var roleStorageBlobDataReader = '2a2b9908-6ea1-4ae2-8e65-a410df84e7d1' // search MI reads corpus blobs
+var roleStorageBlobDataContributor = 'ba92f5b4-2d11-453d-a403-e96b0029c9fe' // caller uploads corpus blobs
+
+// ---------------------------------------------------------------------------
+// Foundry account + project + model deployments (Phase 0, extended w/ embedding)
+// ---------------------------------------------------------------------------
 
 resource account 'Microsoft.CognitiveServices/accounts@2025-06-01' = {
   name: accountName
@@ -72,18 +97,153 @@ resource modelDeployment 'Microsoft.CognitiveServices/accounts/deployments@2025-
   }
 }
 
-resource aiUserRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(principalId)) {
-  name: guid(account.id, principalId, azureAiUserRoleId)
+// Deployments on the same account must be created sequentially.
+resource embeddingDeployment 'Microsoft.CognitiveServices/accounts/deployments@2025-06-01' = {
+  parent: account
+  name: embeddingModelName
+  sku: { name: 'GlobalStandard', capacity: embeddingCapacity }
+  properties: {
+    model: {
+      name: embeddingModelName
+      format: 'OpenAI'
+      version: embeddingModelVersion
+    }
+  }
+  dependsOn: [ modelDeployment ]
+}
+
+// ---------------------------------------------------------------------------
+// Storage for the knowledge base corpus (blob knowledge source)
+// ---------------------------------------------------------------------------
+
+resource storage 'Microsoft.Storage/storageAccounts@2023-05-01' = {
+  name: storageName
+  location: location
+  tags: tags
+  sku: { name: 'Standard_LRS' }
+  kind: 'StorageV2'
+  properties: {
+    allowBlobPublicAccess: false
+    minimumTlsVersion: 'TLS1_2'
+    allowSharedKeyAccess: true
+  }
+}
+
+resource blobService 'Microsoft.Storage/storageAccounts/blobServices@2023-05-01' = {
+  parent: storage
+  name: 'default'
+}
+
+resource corpusContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
+  parent: blobService
+  name: corpusContainerName
+  properties: { publicAccess: 'None' }
+}
+
+// ---------------------------------------------------------------------------
+// Azure AI Search (the Foundry IQ knowledge base lives here)
+// ---------------------------------------------------------------------------
+
+resource search 'Microsoft.Search/searchServices@2024-06-01-preview' = {
+  name: searchName
+  location: location
+  tags: tags
+  sku: { name: searchSkuName }
+  identity: { type: 'SystemAssigned' }
+  properties: {
+    replicaCount: 1
+    partitionCount: 1
+    hostingMode: 'default'
+    semanticSearch: 'free' // enables semantic ranker (agentic retrieval) within the free 1k/month quota
+    authOptions: {
+      aadOrApiKey: { aadAuthFailureMode: 'http401WithBearerChallenge' }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Role assignments (keyless wiring)
+// ---------------------------------------------------------------------------
+
+// Search MI -> call embedding + query-planning models on the Foundry account.
+resource searchToFoundry 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(account.id, search.id, roleCognitiveServicesUser)
   scope: account
   properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', azureAiUserRoleId)
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roleCognitiveServicesUser)
+    principalId: search.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// Search MI -> read corpus blobs during ingestion.
+resource searchToStorage 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(storage.id, search.id, roleStorageBlobDataReader)
+  scope: storage
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roleStorageBlobDataReader)
+    principalId: search.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// Caller (deploying user) -> create knowledge base + knowledge source.
+resource userSearchContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(principalId)) {
+  name: guid(search.id, principalId, roleSearchServiceContributor)
+  scope: search
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roleSearchServiceContributor)
     principalId: principalId
     principalType: 'User'
   }
 }
 
-// Project endpoint in the AIProjectClient form. If FoundryChatClient rejects it
-// at runtime, try AZURE_AI_ACCOUNT_ENDPOINT instead (see README troubleshooting).
+// Caller -> query (retrieve) the knowledge base from the local backend.
+resource userSearchReader 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(principalId)) {
+  name: guid(search.id, principalId, roleSearchIndexDataReader)
+  scope: search
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roleSearchIndexDataReader)
+    principalId: principalId
+    principalType: 'User'
+  }
+}
+
+// Caller -> upload corpus markdown to blob during ingestion.
+resource userStorageContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(principalId)) {
+  name: guid(storage.id, principalId, roleStorageBlobDataContributor)
+  scope: storage
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roleStorageBlobDataContributor)
+    principalId: principalId
+    principalType: 'User'
+  }
+}
+
+// Caller -> Foundry data plane (Phase 0; kept here so the whole stack is one template).
+resource userAiUser 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(principalId)) {
+  name: guid(account.id, principalId, roleAzureAiUser)
+  scope: account
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roleAzureAiUser)
+    principalId: principalId
+    principalType: 'User'
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Outputs (surfaced by azd into .azure/<env>/.env)
+// ---------------------------------------------------------------------------
+
 output FOUNDRY_PROJECT_ENDPOINT string = 'https://${accountName}.services.ai.azure.com/api/projects/${projectName}'
 output AZURE_AI_ACCOUNT_ENDPOINT string = account.properties.endpoint
+output AZURE_AI_OPENAI_ENDPOINT string = 'https://${accountName}.openai.azure.com'
 output FOUNDRY_MODEL string = modelDeploymentName
+output FOUNDRY_EMBEDDING_MODEL string = embeddingModelName
+
+output AZURE_SEARCH_ENDPOINT string = 'https://${searchName}.search.windows.net'
+output AZURE_SEARCH_KNOWLEDGE_BASE string = 'helpdesk-kb'
+
+output AZURE_STORAGE_ACCOUNT string = storage.name
+output AZURE_STORAGE_RESOURCE_ID string = storage.id
+output AZURE_STORAGE_CONTAINER string = corpusContainerName

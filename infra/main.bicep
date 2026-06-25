@@ -44,7 +44,16 @@ module resources 'resources.bicep' = {
   }
 }
 
-// Surfaced into .azure/<env>/.env by azd — feed FOUNDRY_PROJECT_ENDPOINT to the backend.
+// Surfaced into .azure/<env>/.env by azd — feed these to the backend / ingestion.
 output FOUNDRY_PROJECT_ENDPOINT string = resources.outputs.FOUNDRY_PROJECT_ENDPOINT
 output FOUNDRY_MODEL string = resources.outputs.FOUNDRY_MODEL
+output FOUNDRY_EMBEDDING_MODEL string = resources.outputs.FOUNDRY_EMBEDDING_MODEL
 output AZURE_AI_ACCOUNT_ENDPOINT string = resources.outputs.AZURE_AI_ACCOUNT_ENDPOINT
+output AZURE_AI_OPENAI_ENDPOINT string = resources.outputs.AZURE_AI_OPENAI_ENDPOINT
+
+output AZURE_SEARCH_ENDPOINT string = resources.outputs.AZURE_SEARCH_ENDPOINT
+output AZURE_SEARCH_KNOWLEDGE_BASE string = resources.outputs.AZURE_SEARCH_KNOWLEDGE_BASE
+
+output AZURE_STORAGE_ACCOUNT string = resources.outputs.AZURE_STORAGE_ACCOUNT
+output AZURE_STORAGE_RESOURCE_ID string = resources.outputs.AZURE_STORAGE_RESOURCE_ID
+output AZURE_STORAGE_CONTAINER string = resources.outputs.AZURE_STORAGE_CONTAINER

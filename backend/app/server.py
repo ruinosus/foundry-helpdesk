@@ -13,7 +13,7 @@ from agent_framework_ag_ui import add_agent_framework_fastapi_endpoint
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.agents.hello import build_hello_agent
+from app.agents.concierge import build_concierge_agent
 from app.settings import settings
 
 app = FastAPI(title="Foundry Helpdesk", version="0.1.0")
@@ -32,7 +32,7 @@ def healthz() -> dict[str, str]:
 
 
 # Expose the agent as an AG-UI endpoint the CopilotKit HttpAgent connects to.
-add_agent_framework_fastapi_endpoint(app, agent=build_hello_agent(), path="/helpdesk")
+add_agent_framework_fastapi_endpoint(app, agent=build_concierge_agent(), path="/helpdesk")
 
 
 if __name__ == "__main__":

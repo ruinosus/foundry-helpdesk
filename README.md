@@ -5,26 +5,24 @@ workflow, knowledge base, memory, and eval, with a CopilotKit frontend over the
 **AG-UI** protocol. See [`foundry-helpdesk-spec.md`](./foundry-helpdesk-spec.md)
 for the full build spec and [`CLAUDE.md`](./CLAUDE.md) for the working rules.
 
-## Status — Phase 0 (skeleton + hello-world over AG-UI)
+## Status
 
-Code-complete and wired to the **real** Foundry model (`gpt-4.1-mini`) via Agent
-Framework, exposed over AG-UI, with CopilotKit connecting. Infrastructure is a
-real `azd` Bicep template (Foundry account + project + model + RBAC). The
-end-to-end round-trip (the Phase 0 🟢 signal) is reached after `azd up` +
-wiring the endpoint into the backend env (step 1 below).
+- **Phase 0** — hello-world over AG-UI. ✅ Round-trip green (CopilotKit → AG-UI → Foundry `gpt-4.1-mini`).
+- **Phase 1** — Foundry IQ knowledge base. Code-complete; grounds answers in a
+  runbook corpus via Azure AI Search agentic retrieval, cites sources, says "I
+  don't know" off-corpus. Green after `azd up` + ingestion (steps below).
 
-What works without Azure: the Next.js app builds and the chat UI renders; the
-backend wiring is verified (the FastAPI app constructs and registers `/helpdesk`
-+ `/healthz` with no network call). What needs Azure: `FOUNDRY_PROJECT_ENDPOINT`
-must be set for the backend to boot, and a provisioned model for an actual reply.
-The server fails fast with a clear error if the endpoint is unset.
+The backend falls back to the Phase 0 (ungrounded) behavior when the knowledge
+base env vars are absent, so it always boots.
 
 ## Layout
 
 ```
 backend/    FastAPI + Agent Framework, AG-UI endpoint at /helpdesk
+  app/knowledge/corpus/   ~12 fake runbook markdowns (the KB corpus)
+  app/knowledge/ingest.py blob upload + knowledge source + knowledge base
 frontend/   Next.js 15 (App Router) + CopilotKit chat
-infra/      Bicep (azd): Foundry account + project + gpt-4.1-mini + RBAC
+infra/      Bicep (azd): Foundry + AI Search + Storage + embedding + RBAC
 azure.yaml  azd config (provision-only — no services yet)
 ```
 
@@ -44,10 +42,16 @@ it, inference returns 401). Pick a region where `gpt-4.1-mini` GlobalStandard is
 available (e.g. `eastus2`). Lower `modelCapacity` in `infra/resources.bicep` if
 you hit a quota error.
 
-After it finishes, read the outputs into the backend env:
+Phase 1 also provisions **Azure AI Search (Basic, ~$0.10/hr)**, a Storage
+account, and a `text-embedding-3-large` deployment, with keyless RBAC. AI Search
+is billed per hour the service exists — run `azd down` when you finish testing to
+stop the meter.
+
+After it finishes, read all outputs into the backend env:
 
 ```bash
-azd env get-values | grep FOUNDRY_   # FOUNDRY_PROJECT_ENDPOINT, FOUNDRY_MODEL
+azd env get-values > /tmp/azd.env   # then copy the values you need into backend/.env
+azd env get-values | grep -E 'FOUNDRY_|AZURE_'
 ```
 
 > The Bicep schema is verified against the official Foundry sample
@@ -60,11 +64,22 @@ azd env get-values | grep FOUNDRY_   # FOUNDRY_PROJECT_ENDPOINT, FOUNDRY_MODEL
 > `FoundryChatClient` rejects it at runtime, try the account-only endpoint from
 > the `AZURE_AI_ACCOUNT_ENDPOINT` output instead.
 
-### 2. Backend
+### 2. Backend env + knowledge base ingestion
 
 ```bash
 cd backend
-cp .env.example .env          # fill FOUNDRY_PROJECT_ENDPOINT from azd output
+cp .env.example .env          # fill all values from `azd env get-values`
+az login                      # identity that received the RBAC roles
+
+# One-time (and whenever the corpus changes): build the Foundry IQ knowledge base.
+uv run python -m app.knowledge.ingest
+```
+
+Ingestion uploads the corpus to blob, creates the blob knowledge source (Azure
+AI Search auto-chunks + embeds it), and creates the knowledge base. Indexing
+takes a few minutes; the script polls until it settles.
+
+```bash
 uv run uvicorn app.server:app --port 8000 --reload
 ```
 
@@ -82,9 +97,21 @@ npm run dev                   # http://localhost:3000
 Open http://localhost:3000 and send a message — it round-trips
 CopilotKit → `/api/copilotkit` → AG-UI (`:8000/helpdesk`) → Foundry.
 
-## Phase 0 acceptance
+## Acceptance
 
+**Phase 0**
 - 🟢 message round-trips with streaming visible in the CopilotKit chat.
 - 🔴 CORS blocking, or `DefaultAzureCredential` failing locally.
 
-Next: Phase 1 (Foundry IQ knowledge base). See the spec's phase plan.
+**Phase 1** (ask about a runbook, e.g. *"VPN keeps dropping on my new laptop"*)
+- 🟢 the answer cites a real corpus document; an off-corpus question (e.g.
+  *"what's the capital of France?"*) returns "I don't know" instead of guessing.
+- 🔴 empty retrieval, or an answer with no citation.
+
+## Tear down (stop the cost)
+
+```bash
+azd down --purge     # deletes the resource group incl. AI Search (the hourly cost)
+```
+
+Next: Phase 2 (workflow + streaming of intermediate steps). See the spec's phase plan.
