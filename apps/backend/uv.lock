@@ -1175,7 +1175,7 @@ requires-dist = [
     { name = "fastapi-azure-auth", specifier = ">=5.2.0" },
     { name = "pydantic-settings", specifier = ">=2.6.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.32.0" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.49.0" },
 ]
 
 [[package]]
