@@ -1,41 +1,50 @@
-// Foundry Helpdesk — infrastructure (SKELETON).
+// Foundry Helpdesk — azd entry point (subscription-scoped).
 //
-// ⚠️ This is a placeholder, NOT a verified deployable template. The Foundry
-// resource provider surface (account/project/model deployment, Foundry IQ,
-// memory store) moves fast. DO NOT run `azd up` against this without first
-// verifying every resource type, apiVersion, and property against:
-//   https://learn.microsoft.com/azure/templates/microsoft.cognitiveservices
-//   https://github.com/microsoft-foundry/foundry-samples (infra/ examples)
+// Provisions a resource group, then the Foundry account + project + gpt-4.1-mini
+// deployment + data-plane role assignment (in resources.bicep).
 //
-// TODO: verify resource types + apiVersions below before provisioning.
+// Schema verified against the official Foundry sample
+// (microsoft-foundry/foundry-samples 00-basic) and the learn.microsoft.com
+// Bicep quickstart — resource types/apiVersions are not invented (CLAUDE.md #1).
 
-targetScope = 'resourceGroup'
+targetScope = 'subscription'
 
-@description('Base name for resources')
-param name string = 'helpdesk'
+@minLength(1)
+@maxLength(64)
+@description('Name of the azd environment — derives resource names and tags.')
+param environmentName string
 
-@description('Location for all resources')
-param location string = resourceGroup().location
+@description('Primary location for all resources (azd prompts for this).')
+param location string
 
-@description('Model deployment name surfaced to the app as FOUNDRY_MODEL')
+@description('Object ID granted data-plane access. azd sets this from AZURE_PRINCIPAL_ID.')
+param principalId string = ''
+
+@description('Model deployment name, surfaced to the app as FOUNDRY_MODEL.')
 param modelDeploymentName string = 'gpt-4.1-mini'
 
-// TODO: verify Microsoft.CognitiveServices Foundry account/project resource
-// shape. The following is illustrative scaffolding, not a confirmed schema.
-//
-// resource foundryAccount 'Microsoft.CognitiveServices/accounts@2025-06-01' = {
-//   name: '${name}-foundry'
-//   location: location
-//   kind: 'AIServices'
-//   sku: { name: 'S0' }
-//   properties: { allowProjectManagement: true }
-// }
-//
-// resource project '.../projects@...' = { ... }       // Foundry project
-// resource model '.../deployments@...' = { ... }       // gpt-4.1-mini deployment
-// resource appInsights 'Microsoft.Insights/components@2020-02-02' = { ... }
+var resourceToken = toLower(uniqueString(subscription().id, environmentName, location))
+var tags = { 'azd-env-name': environmentName }
 
-// Outputs consumed by azd -> app env (FOUNDRY_PROJECT_ENDPOINT / FOUNDRY_MODEL).
-// TODO: wire these to the real project endpoint once resources above are defined.
-output FOUNDRY_PROJECT_ENDPOINT string = '' // = project.properties.endpoint
-output FOUNDRY_MODEL string = modelDeploymentName
+resource rg 'Microsoft.Resources/resourceGroups@2024-03-01' = {
+  name: 'rg-${environmentName}'
+  location: location
+  tags: tags
+}
+
+module resources 'resources.bicep' = {
+  name: 'resources'
+  scope: rg
+  params: {
+    location: location
+    tags: tags
+    resourceToken: resourceToken
+    principalId: principalId
+    modelDeploymentName: modelDeploymentName
+  }
+}
+
+// Surfaced into .azure/<env>/.env by azd — feed FOUNDRY_PROJECT_ENDPOINT to the backend.
+output FOUNDRY_PROJECT_ENDPOINT string = resources.outputs.FOUNDRY_PROJECT_ENDPOINT
+output FOUNDRY_MODEL string = resources.outputs.FOUNDRY_MODEL
+output AZURE_AI_ACCOUNT_ENDPOINT string = resources.outputs.AZURE_AI_ACCOUNT_ENDPOINT

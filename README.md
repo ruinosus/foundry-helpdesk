@@ -8,9 +8,10 @@ for the full build spec and [`CLAUDE.md`](./CLAUDE.md) for the working rules.
 ## Status — Phase 0 (skeleton + hello-world over AG-UI)
 
 Code-complete and wired to the **real** Foundry model (`gpt-4.1-mini`) via Agent
-Framework, exposed over AG-UI, with CopilotKit connecting. The end-to-end
-round-trip (the Phase 0 🟢 signal) is **pending Azure provisioning** — `azd` is
-not installed here and no subscription is wired up yet.
+Framework, exposed over AG-UI, with CopilotKit connecting. Infrastructure is a
+real `azd` Bicep template (Foundry account + project + model + RBAC). The
+end-to-end round-trip (the Phase 0 🟢 signal) is reached after `azd up` +
+wiring the endpoint into the backend env (step 1 below).
 
 What works without Azure: the Next.js app builds and the chat UI renders; the
 backend wiring is verified (the FastAPI app constructs and registers `/helpdesk`
@@ -23,24 +24,41 @@ The server fails fast with a clear error if the endpoint is unset.
 ```
 backend/    FastAPI + Agent Framework, AG-UI endpoint at /helpdesk
 frontend/   Next.js 15 (App Router) + CopilotKit chat
-infra/      Bicep skeleton (azd) — NOT yet deployable, see TODOs
-azure.yaml  azd config skeleton
+infra/      Bicep (azd): Foundry account + project + gpt-4.1-mini + RBAC
+azure.yaml  azd config (provision-only — no services yet)
 ```
 
 ## Run locally
 
-### 1. Provision Foundry (required for live replies)
+### 1. Provision Foundry with azd (required for live replies)
 
 ```bash
-# azd is not installed in the dev box used for Phase 0 — install it first:
-#   https://aka.ms/install-azd
 azd auth login
-azd up        # provisions Foundry project + gpt-4.1-mini deployment
+azd up        # prompts for env name + location; provisions everything in infra/
 ```
 
-> ⚠️ `infra/main.bicep` and `azure.yaml` are **skeletons** with `TODO: verify`
-> markers. Confirm the Foundry resource schema against the Foundry samples repo
-> before running `azd up`. See [`CLAUDE.md`](./CLAUDE.md) rule #1.
+`azd up` creates a resource group `rg-<env>`, a Foundry account
+`aif-helpdesk-<token>`, the project **`helpdesk-concierge`**, a `gpt-4.1-mini`
+deployment, and grants your user the **Azure AI User** data-plane role (without
+it, inference returns 401). Pick a region where `gpt-4.1-mini` GlobalStandard is
+available (e.g. `eastus2`). Lower `modelCapacity` in `infra/resources.bicep` if
+you hit a quota error.
+
+After it finishes, read the outputs into the backend env:
+
+```bash
+azd env get-values | grep FOUNDRY_   # FOUNDRY_PROJECT_ENDPOINT, FOUNDRY_MODEL
+```
+
+> The Bicep schema is verified against the official Foundry sample
+> (`microsoft-foundry/foundry-samples` `00-basic`), but it has **not** been
+> compile-checked locally (no bicep CLI in the dev box). If `azd up` surfaces a
+> Bicep error, that's the place to look first.
+>
+> **Endpoint form:** `FOUNDRY_PROJECT_ENDPOINT` is emitted as
+> `https://<account>.services.ai.azure.com/api/projects/<project>`. If
+> `FoundryChatClient` rejects it at runtime, try the account-only endpoint from
+> the `AZURE_AI_ACCOUNT_ENDPOINT` output instead.
 
 ### 2. Backend
 
