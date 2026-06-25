@@ -179,8 +179,9 @@ azd env get-values | grep WEB_URL      # then add  https://<web-fqdn>/  to the S
 Bicep wires the apps to each other by FQDN (no manual URL config) and grants the
 shared identity ACR pull + Foundry/Search access. Images build remotely in ACR.
 
-> **Cost:** the container apps default to `minReplicas: 1` (always-on). For
-> scale-to-zero (idle = \$0), set `minReplicas: 0` in `infra/containerapps.bicep`.
+> **Cost:** the container apps are configured **`minReplicas: 0`** (scale-to-zero,
+> idle = \$0) in `infra/containerapps.bicep`. They spin up on the first request and
+> back down when idle. See [Cost & teardown](#cost--teardown) for the full picture.
 
 ---
 
@@ -201,13 +202,26 @@ List the built-in RAI policies for `--policy`:
 
 ## Cost & teardown
 
-| Resource | Cost | Note |
-| --- | --- | --- |
-| Azure AI Search (Basic) | ~\$0.10/hr | the meter that runs 24/7 |
-| ACR (Basic) | ~\$5/mo | |
-| Container Apps (min 1 replica) | a few \$/mo each | set `minReplicas: 0` for scale-to-zero |
-| Hosted agent compute | **\$0 idle** | deprovisions after 15 min |
-| Models | per token | |
+Pay-as-you-go, East US 2, USD. The numbers are order-of-magnitude — check the
+[Azure pricing calculator](https://azure.microsoft.com/pricing/calculator/) for
+your region/agreement. The table separates **fixed meters** (billed 24/7 whether
+or not anyone uses the app) from **usage meters** (≈\$0 when idle).
+
+| Resource | SKU | Cost | Kind |
+| --- | --- | --- | --- |
+| **Azure AI Search** | Basic | **~\$0.10/hr ≈ \$74/mo** | 🔴 fixed — runs 24/7, **the meter to watch** |
+| Azure Container Registry | Basic | ~\$0.17/day ≈ **\$5/mo** | 🔴 fixed (already provisioned for the hosted agent) |
+| Log Analytics | PerGB2018 | ~\$2.76/GB ingested · **\$0–3/mo** | 🟡 usage — demo telemetry is <1 GB/mo; 30-day retention free |
+| Container Apps (backend + web) | Consumption, 0.5 vCPU / 1 GiB, **scale-to-zero** | **\$0 idle** · ~cents under demo load | 🟢 usage — within the monthly free grant (180k vCPU-s / 360k GiB-s / 2M req) |
+| Hosted agent compute | — | **\$0 idle** | 🟢 deprovisions ~15 min after last call |
+| Azure AI Foundry | Cognitive Services S0 | no fixed fee | 🟢 pay per token (below) |
+| Model usage | `gpt-4.1-mini` GlobalStandard | ~\$0.40 / 1M input · ~\$1.60 / 1M output tok | 🟢 usage — a showcase is cents–few \$/mo |
+| Embeddings | `text-embedding-3-*` | ~\$0.02 / 1M tok | 🟢 usage — negligible |
+| Storage | Standard_LRS | <\$1/mo | 🟢 usage |
+
+**Bottom line:**
+- **Marginal cost of the backend + web deploy** (Step 7): **~\$0–3/mo** — compute is scale-to-zero, the ACR already existed, so it's just a little Log Analytics ingestion.
+- **Dominant cost overall: Azure AI Search ≈ \$74/mo if left on 24/7.** It has no scale-to-zero. If you're not actively using the showcase, **`azd down`** to stop that meter — it's ~95% of the bill.
 
 ```bash
 azd ai agent delete helpdesk-concierge   # remove just the hosted agent
