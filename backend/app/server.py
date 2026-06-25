@@ -14,7 +14,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.agents.concierge import build_concierge_agent
+from app.agents.concierge import _knowledge_configured
 from app.settings import settings
+from app.workflow.graph import build_helpdesk_workflow
 
 app = FastAPI(title="Foundry Helpdesk", version="0.1.0")
 
@@ -31,8 +33,11 @@ def healthz() -> dict[str, str]:
     return {"status": "ok"}
 
 
-# Expose the agent as an AG-UI endpoint the CopilotKit HttpAgent connects to.
-add_agent_framework_fastapi_endpoint(app, agent=build_concierge_agent(), path="/helpdesk")
+# Expose over AG-UI: the multi-agent workflow when the knowledge base is wired
+# (Phase 2 — emits triage/retrieve/resolve steps), else the single concierge
+# agent (Phase 0/1 fallback so the app still boots without a KB).
+_helpdesk = build_helpdesk_workflow() if _knowledge_configured() else build_concierge_agent()
+add_agent_framework_fastapi_endpoint(app, agent=_helpdesk, path="/helpdesk")
 
 
 if __name__ == "__main__":

@@ -6,6 +6,7 @@
 
 import { CopilotKit } from "@copilotkit/react-core";
 import { CopilotChat } from "@copilotkit/react-ui";
+import { WorkflowSteps } from "./components/WorkflowSteps";
 
 export default function Page() {
   return (
@@ -19,9 +20,10 @@ export default function Page() {
           margin: "0 auto",
         }}
       >
-        <h1 style={{ padding: "16px 24px", fontFamily: "system-ui" }}>
+        <h1 style={{ padding: "16px 24px 4px", fontFamily: "system-ui" }}>
           Helpdesk Concierge
         </h1>
+        <WorkflowSteps />
         <div style={{ flex: 1, minHeight: 0 }} className="copilotkit-chat-host">
           <CopilotChat
             labels={{
