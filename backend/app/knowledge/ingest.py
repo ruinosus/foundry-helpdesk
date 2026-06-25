@@ -21,6 +21,9 @@ SDK surface verified against azure-search-documents 11.7.0b2.
 
 from __future__ import annotations
 
+import concurrent.futures
+import logging
+import os
 import sys
 import time
 from pathlib import Path
@@ -45,6 +48,53 @@ from app.settings import settings
 
 CORPUS_DIR = Path(__file__).parent / "corpus"
 KNOWLEDGE_SOURCE_NAME = "helpdesk-runbooks-ks"
+
+# Per-call wall-clock budget. The create/update REST calls should return in
+# seconds; if they hang, fail fast with the HTTP log instead of blocking forever.
+CALL_TIMEOUT_S = int(os.environ.get("INGEST_CALL_TIMEOUT", "90"))
+
+
+def _setup_logging() -> None:
+    """Show the Azure SDK HTTP request/response lines so we can see where it hangs.
+
+    Set INGEST_DEBUG=1 for full DEBUG (request/response bodies + headers).
+    """
+    logging.basicConfig(
+        level=logging.WARNING,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        stream=sys.stdout,
+    )
+    http_level = logging.DEBUG if os.environ.get("INGEST_DEBUG") else logging.INFO
+    logging.getLogger(
+        "azure.core.pipeline.policies.http_logging_policy"
+    ).setLevel(http_level)
+
+
+def _with_timeout(label: str, fn, timeout_s: int = CALL_TIMEOUT_S):
+    """Run a blocking SDK call with a hard wall-clock timeout.
+
+    On timeout we hard-exit (os._exit) so a stuck request thread can't keep the
+    process alive; the HTTP log above points at the offending request.
+    """
+    print(f"  -> {label} (timeout {timeout_s}s)...", flush=True)
+    started = time.monotonic()
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    future = executor.submit(fn)
+    try:
+        result = future.result(timeout=timeout_s)
+    except concurrent.futures.TimeoutError:
+        print(
+            f"  !! {label} TIMED OUT after {timeout_s}s — the call never returned.\n"
+            f"     Look at the last 'Request URL' logged above: that request is hanging.\n"
+            f"     Common causes: the search service can't reach the embedding endpoint\n"
+            f"     (managed-identity role not yet effective, or wrong AZURE_AI_OPENAI_ENDPOINT),\n"
+            f"     or a wrong api-version. Inspect the Search service in the Azure portal.",
+            flush=True,
+        )
+        os._exit(1)
+    executor.shutdown(wait=False)
+    print(f"  <- {label} ok ({time.monotonic() - started:.1f}s)", flush=True)
+    return result
 
 
 def _require(name: str, value: str) -> str:
@@ -100,7 +150,10 @@ def create_knowledge_source(index_client: SearchIndexClient) -> None:
             ),
         ),
     )
-    index_client.create_or_update_knowledge_source(knowledge_source)
+    _with_timeout(
+        f"create knowledge source '{KNOWLEDGE_SOURCE_NAME}'",
+        lambda: index_client.create_or_update_knowledge_source(knowledge_source),
+    )
     print(f"Knowledge source '{KNOWLEDGE_SOURCE_NAME}' created/updated.")
 
 
@@ -128,7 +181,10 @@ def create_knowledge_base(index_client: SearchIndexClient) -> None:
         ),
         retrieval_reasoning_effort=KnowledgeRetrievalLowReasoningEffort(),
     )
-    index_client.create_or_update_knowledge_base(knowledge_base)
+    _with_timeout(
+        f"create knowledge base '{kb_name}'",
+        lambda: index_client.create_or_update_knowledge_base(knowledge_base),
+    )
     print(f"Knowledge base '{kb_name}' created/updated.")
 
 
@@ -155,10 +211,32 @@ def wait_for_ingestion(index_client: SearchIndexClient, timeout_s: int = 600) ->
 
 
 def main() -> None:
+    _setup_logging()
     _require("AZURE_SEARCH_ENDPOINT", settings.azure_search_endpoint)
+    # A blob knowledge source that uses an LLM (gpt-4.1-mini query planning) needs
+    # the 2026-05-01-preview API; the SDK default (2025-11-01-preview) is older.
+    api_version = os.environ.get("SEARCH_API_VERSION", "2026-05-01-preview")
+    print(f"Search endpoint: {settings.azure_search_endpoint}")
+    print(f"OpenAI endpoint: {settings.azure_ai_openai_endpoint}")
+    print(f"Embedding: {settings.foundry_embedding_model} | Chat: {settings.foundry_model}")
+    print(f"api-version: {api_version}")
+
     credential = DefaultAzureCredential()
     index_client = SearchIndexClient(
-        endpoint=settings.azure_search_endpoint, credential=credential
+        endpoint=settings.azure_search_endpoint,
+        credential=credential,
+        api_version=api_version,
+        logging_enable=True,  # emit HTTP request/response lines
+        connection_timeout=20,
+        read_timeout=CALL_TIMEOUT_S,
+    )
+
+    # Preflight: a lightweight GET isolates connectivity/auth from the create payload.
+    print("== Preflight: list knowledge sources (auth + connectivity check) ==")
+    _with_timeout(
+        "list knowledge sources",
+        lambda: [ks.name for ks in index_client.list_knowledge_sources()],
+        timeout_s=30,
     )
 
     print("== Step 1/3: upload corpus ==")
