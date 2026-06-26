@@ -22,6 +22,21 @@ from the runbook knowledge base → **resolves** with a grounded, cited answer �
 **escalates** with human approval when an action is needed → and the whole thing
 is **evaluated** and **traceable**.
 
+## Quickstart
+
+```bash
+azd auth login && az login
+azd up                      # provision Azure infra
+./scripts/setup-entra.sh    # optional: Entra sign-in + OBO (skip to run without auth)
+./scripts/bootstrap.sh      # fill .env, ingest the knowledge base, provision memory
+
+cd apps/backend  && uv run uvicorn app.main:app --port 8000 --reload
+cd apps/frontend && npm install && npm run dev      # http://localhost:3000
+```
+
+Full runbook + the manual steps behind the scripts: [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md).
+Adapt it to your own domain: [`docs/CUSTOMIZE.md`](./docs/CUSTOMIZE.md).
+
 ## Status — all six phases green
 
 | Phase | Pillar | What it proves |
