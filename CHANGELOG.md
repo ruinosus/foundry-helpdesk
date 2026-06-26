@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.3.0](https://github.com/ruinosus/foundry-helpdesk/compare/v0.2.0...v0.3.0) (2026-06-26)
+
+
+### Features
+
+* **ci:** evaluate the deployed agent with the official Foundry ai-agent-evals action ([#31](https://github.com/ruinosus/foundry-helpdesk/issues/31)) ([180d188](https://github.com/ruinosus/foundry-helpdesk/commit/180d18844155afdf3a6f0ffbf4aaa29695a6160f))
+* **cockpit:** Cockpit expert agent + grounded-qa Skill (deep-wiki, SKILL.md) ([#34](https://github.com/ruinosus/foundry-helpdesk/issues/34)) ([bcae908](https://github.com/ruinosus/foundry-helpdesk/commit/bcae908a796764f297faf593ecb5fb849e317a33))
+* **cockpit:** deploy the Cockpit expert as a hosted Foundry agent (Phase C) ([#39](https://github.com/ruinosus/foundry-helpdesk/issues/39)) ([4a48cdc](https://github.com/ruinosus/foundry-helpdesk/commit/4a48cdcff8e21f35aa981e1e8d5fe90f5f59675b))
+* **cockpit:** ingest the Cockpit docbundles into a second Foundry IQ KB ([#33](https://github.com/ruinosus/foundry-helpdesk/issues/33)) ([b7a1fce](https://github.com/ruinosus/foundry-helpdesk/commit/b7a1fce5860115d0be06a303f5393659fb276429))
+* **dx:** MarkItDown converter for non-markdown corpora ([#32](https://github.com/ruinosus/foundry-helpdesk/issues/32)) ([d91c5d3](https://github.com/ruinosus/foundry-helpdesk/commit/d91c5d3b0cc13d519ea17d1fa91153b29c55944b))
+* **evals:** render real eval scores live from Foundry (not a local mirror) ([#29](https://github.com/ruinosus/foundry-helpdesk/issues/29)) ([0eefe9b](https://github.com/ruinosus/foundry-helpdesk/commit/0eefe9b35f72674e52e1927010b5877c136418a8))
+* **eval:** wire the Cockpit golden into the eval harness (--domain cockpit) ([#41](https://github.com/ruinosus/foundry-helpdesk/issues/41)) ([6779a21](https://github.com/ruinosus/foundry-helpdesk/commit/6779a21c4829f6ee6c38488f243ef45e7af10e4d))
+* **wiki:** instrument Wiki Builder cost + wire Foundry observability ([#37](https://github.com/ruinosus/foundry-helpdesk/issues/37)) ([4acf379](https://github.com/ruinosus/foundry-helpdesk/commit/4acf37944089e08d7a2fef6710cf234a8095a891))
+* **wiki:** Wiki Builder — generate a faithful LLM wiki from source on Foundry ([#35](https://github.com/ruinosus/foundry-helpdesk/issues/35)) ([66db7d3](https://github.com/ruinosus/foundry-helpdesk/commit/66db7d3e5c8f1805c42326e30a78c3a53bfb3c21))
+
+
+### Bug Fixes
+
+* **cockpit:** re-index fresh + reconcile deletions on ingest ([#40](https://github.com/ruinosus/foundry-helpdesk/issues/40)) ([87a0236](https://github.com/ruinosus/foundry-helpdesk/commit/87a0236de04f3bdab2fb76e16ba35c3523a7f222))
+* **frontend:** serve CopilotKit v2 agent-run paths via catch-all route ([#38](https://github.com/ruinosus/foundry-helpdesk/issues/38)) ([5b5c37e](https://github.com/ruinosus/foundry-helpdesk/commit/5b5c37ed6089982f9922e56bd23d965a7cb02189))
+
+
+### Documentation
+
+* case study — the source-grounded LLM wiki loop (measured) ([#36](https://github.com/ruinosus/foundry-helpdesk/issues/36)) ([4c76fdf](https://github.com/ruinosus/foundry-helpdesk/commit/4c76fdf93bee86632080ce26369e13259219dc08))
+
 ## [0.2.0](https://github.com/ruinosus/foundry-helpdesk/compare/v0.1.0...v0.2.0) (2026-06-26)
 
 
