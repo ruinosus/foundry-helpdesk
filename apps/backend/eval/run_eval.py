@@ -32,6 +32,7 @@ from pathlib import Path
 
 from agent_framework import EvalItem, EvalNotPassedError, LocalEvaluator, Message
 
+from app.agents.cockpit import build_cockpit_agent
 from app.agents.concierge import build_concierge_agent
 from app.core.settings import settings
 from eval.assertions import (
@@ -39,12 +40,14 @@ from eval.assertions import (
     check_cites_a_source,
     check_no_secret_leaked,
     cites_a_source,
+    cockpit_cites_source,
     no_secret_leaked,
     secret_findings,
 )
 
 _DATASETS = Path(__file__).resolve().parent / "datasets"
 _GOLDEN = _DATASETS / "golden.jsonl"
+_COCKPIT_GOLDEN = _DATASETS / "cockpit_golden.jsonl"
 _ADVERSARIAL = _DATASETS / "adversarial.jsonl"
 _CORPUS = Path(__file__).resolve().parent.parent / "app" / "knowledge" / "corpus"
 _RUNS = Path(__file__).resolve().parent / "runs.jsonl"
@@ -98,48 +101,89 @@ _FILTER_MARKERS = ("content_filter", "contentfiltered", "jailbreak", "content ma
 _BLOCKED_ANSWER = "I can't help with that — the request was blocked by the content safety filter."
 
 
-async def _build_items(agent, rows: list[dict]) -> list[EvalItem]:
-    """Run the agent on each query and wrap the turn (with its source runbook as
-    grounding context) into an EvalItem.
+async def _agent_answer(agent, query: str, *, retries: int = 4) -> str:
+    """Run one query, retrying on rate limits. The cockpit agent does agentic
+    retrieval (several model calls per query), so a tight 20-query loop bursts over
+    the deployment TPM cap — back off and retry instead of failing the whole run.
+    Content-filter blocks are re-raised for the caller to classify as a refusal."""
+    delay = 15
+    for attempt in range(retries):
+        try:
+            return (await agent.run(query)).text or ""
+        except Exception as exc:  # noqa: BLE001
+            s = str(exc).lower()
+            if any(marker in s for marker in _FILTER_MARKERS):
+                raise
+            throttled = "429" in s or "rate limit" in s or "rate_limit" in s
+            if throttled and attempt < retries - 1:
+                print(f"  ⏳ rate-limited; retry in {delay}s…", flush=True)
+                await asyncio.sleep(delay)
+                delay *= 2
+                continue
+            raise
+
+
+async def _build_items(
+    agent, rows: list[dict], *, use_context: bool = True,
+    expected_field: str = "expected_output", pace_s: float = 0.0,
+) -> list[EvalItem]:
+    """Run the agent on each query and wrap the turn into an EvalItem.
+
+    Helpdesk feeds the named runbook's text as grounding ``context`` (groundedness).
+    Cockpit grounds in a cloud KB with no local source file, so it carries no context
+    and instead supplies the golden ``expected`` answer for reference-based judges
+    (similarity / response completeness).
 
     Adversarial prompts often get stopped by Azure's content/jailbreak filter
     *before* the model — that's a safe outcome, so we treat the resulting error as
     a refusal rather than letting it crash the run."""
-    corpus = _corpus_by_title()
+    corpus = _corpus_by_title() if use_context else {}
     items: list[EvalItem] = []
     blocked = 0
-    for row in rows:
+    for i, row in enumerate(rows):
         query = row["query"]
         try:
-            response = await agent.run(query)
-            text = response.text or ""
+            text = await _agent_answer(agent, query)
         except Exception as exc:  # noqa: BLE001 — classify content-filter blocks
             if any(marker in str(exc).lower() for marker in _FILTER_MARKERS):
                 text = _BLOCKED_ANSWER
                 blocked += 1
             else:
                 raise
-        context = corpus.get((row.get("source") or "").lower(), "")
+        context = corpus.get((row.get("source") or "").lower(), "") if use_context else ""
         items.append(
             EvalItem(
                 conversation=[Message("user", [query]), Message("assistant", [text])],
                 context=context or None,
-                expected_output=row.get("expected_output") or None,
+                expected_output=row.get(expected_field) or None,
             )
         )
+        if pace_s and i < len(rows) - 1:
+            await asyncio.sleep(pace_s)
     if blocked:
         print(f"🛡️  {blocked}/{len(rows)} prompt(s) blocked upfront by the Azure content/jailbreak filter.")
     return items
 
 
-async def _run(cloud: bool, safety: bool) -> int:
-    # --safety swaps the golden set for adversarial/jailbreak prompts and the
-    # Foundry quality judges for safety judges. The same local gate applies: the
-    # answer must decline or stay grounded (cites_a_source passes refusals) and
-    # never leak a secret — i.e. it didn't get jailbroken off-policy.
-    rows = _load_dataset(_ADVERSARIAL if safety else _GOLDEN)
-    eval_name = "helpdesk-safety" if safety else "helpdesk-golden"
-    local = LocalEvaluator(cites_a_source, no_secret_leaked)
+async def _run(cloud: bool, safety: bool, domain: str) -> int:
+    # Domain config. helpdesk: grounded against local runbooks (+ --safety swaps in
+    # the adversarial set and safety judges). cockpit: a second domain grounded in a
+    # cloud Foundry IQ KB (no local source file), measured for *correctness* against
+    # the golden `expected` answer (reference-based judges), not groundedness.
+    if domain == "cockpit":
+        rows = _load_dataset(_COCKPIT_GOLDEN)
+        eval_name = "cockpit-golden"
+        local = LocalEvaluator(cockpit_cites_source, no_secret_leaked)
+        agent_factory = build_cockpit_agent
+        build_kwargs = {"use_context": False, "expected_field": "expected", "pace_s": 3.0}
+        label = "cockpit golden"
+    else:
+        rows = _load_dataset(_ADVERSARIAL if safety else _GOLDEN)
+        eval_name = "helpdesk-safety" if safety else "helpdesk-golden"
+        local = LocalEvaluator(cites_a_source, no_secret_leaked)
+        agent_factory = build_concierge_agent
+        build_kwargs = {"use_context": True, "expected_field": "expected_output"}
+        label = "adversarial" if safety else "golden"
 
     cred = project = foundry = None
     if cloud:
@@ -151,27 +195,37 @@ async def _run(cloud: bool, safety: bool) -> int:
         project = AIProjectClient(
             endpoint=settings.foundry_project_endpoint, credential=cred
         )
-        quality = [FoundryEvals.GROUNDEDNESS, FoundryEvals.RELEVANCE, FoundryEvals.COHERENCE]
-        harms = [
-            FoundryEvals.VIOLENCE,
-            FoundryEvals.SELF_HARM,
-            FoundryEvals.SEXUAL,
-            FoundryEvals.HATE_UNFAIRNESS,
-        ]
+        if domain == "cockpit":
+            # SIMILARITY is the reference-based correctness score (answer vs the
+            # golden `expected`) — the cloud analogue of the source-verified
+            # "key-fact" judge — plus relevance/coherence. (RESPONSE_COMPLETENESS is
+            # omitted: it requires an explicit `ground_truth` data mapping the simple
+            # EvalItem path doesn't supply.)
+            evaluators = [
+                FoundryEvals.SIMILARITY,
+                FoundryEvals.RELEVANCE,
+                FoundryEvals.COHERENCE,
+            ]
+        elif safety:
+            evaluators = [
+                FoundryEvals.VIOLENCE,
+                FoundryEvals.SELF_HARM,
+                FoundryEvals.SEXUAL,
+                FoundryEvals.HATE_UNFAIRNESS,
+            ]
+        else:
+            evaluators = [FoundryEvals.GROUNDEDNESS, FoundryEvals.RELEVANCE, FoundryEvals.COHERENCE]
         foundry = FoundryEvals(
-            project_client=project,
-            model=settings.foundry_model,
-            evaluators=harms if safety else quality,
+            project_client=project, model=settings.foundry_model, evaluators=evaluators
         )
 
-    judges = "Foundry safety judges" if safety else "Foundry cloud judges"
-    where = "local policy gate" + (f" + {judges}" if cloud else "")
-    print(f"Evaluating {len(rows)} {'adversarial' if safety else 'golden'} queries with: {where}")
+    where = "local policy gate" + (" + Foundry cloud judges" if cloud else "")
+    print(f"Evaluating {len(rows)} {label} queries [{domain}] with: {where}")
 
     try:
         # `async with` closes the agent's chat-client session cleanly.
-        async with build_concierge_agent() as agent:
-            items = await _build_items(agent, rows)
+        async with agent_factory() as agent:
+            items = await _build_items(agent, rows, **build_kwargs)
 
         results = [await local.evaluate(items, eval_name=eval_name)]
         if foundry is not None:
@@ -190,12 +244,7 @@ async def _run(cloud: bool, safety: bool) -> int:
     gate_failed = False
     try:
         results[0].raise_for_status()
-        ok = (
-            "every answer refused or stayed grounded, and leaked no secret."
-            if safety
-            else "every answer cited a source and leaked no secret."
-        )
-        print(f"\n✅ Policy gate PASSED — {ok}")
+        print(f"\n✅ Policy gate PASSED — {eval_name}: every answer cited a source (or declined) and leaked no secret.")
     except EvalNotPassedError as exc:
         gate_failed = True
         print(f"\n❌ Policy gate FAILED — {exc}")
@@ -254,15 +303,18 @@ def _self_test() -> int:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Helpdesk eval harness (Phase 5).")
-    parser.add_argument("--cloud", action="store_true", help="add Foundry cloud evaluators (groundedness/relevance/coherence, or safety judges with --safety)")
-    parser.add_argument("--safety", action="store_true", help="run the adversarial/jailbreak set; gate on refuse-or-ground + no-secret, score with Foundry safety judges")
+    parser = argparse.ArgumentParser(description="Eval harness (Phase 5) — helpdesk + cockpit domains.")
+    parser.add_argument("--domain", choices=["helpdesk", "cockpit"], default="helpdesk", help="which agent/golden to evaluate (default: helpdesk)")
+    parser.add_argument("--cloud", action="store_true", help="add Foundry cloud evaluators (helpdesk: groundedness/relevance/coherence; cockpit: similarity/completeness/relevance/coherence; +safety judges with --safety)")
+    parser.add_argument("--safety", action="store_true", help="[helpdesk] run the adversarial/jailbreak set; gate on refuse-or-ground + no-secret, score with Foundry safety judges")
     parser.add_argument("--self-test", action="store_true", help="prove the policy gate catches a planted violation (no network)")
     args = parser.parse_args()
 
     if args.self_test:
         sys.exit(_self_test())
-    sys.exit(asyncio.run(_run(cloud=args.cloud, safety=args.safety)))
+    if args.safety and args.domain != "helpdesk":
+        parser.error("--safety applies to the helpdesk domain only")
+    sys.exit(asyncio.run(_run(cloud=args.cloud, safety=args.safety, domain=args.domain)))
 
 
 if __name__ == "__main__":

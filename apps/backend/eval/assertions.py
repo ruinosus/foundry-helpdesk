@@ -162,3 +162,25 @@ def secret_findings(response: str) -> list[str]:
 
 cites_a_source = evaluator(check_cites_a_source, name="cites_a_source")
 no_secret_leaked = evaluator(check_no_secret_leaked, name="no_secret_leaked")
+
+
+# Cockpit (second domain): the corpus is a cloud Foundry IQ KB, not local runbook
+# files, so the title-token match above doesn't apply. The grounded-qa skill makes
+# the agent cite the component + source document; this floor passes when the answer
+# carries a citation signal (a source-file/component/version reference) or declines.
+_COCKPIT_CITATION = re.compile(
+    r"\bsrc/|\.(?:cs|ts|tsx|py|csproj|sln)\b|cockpit-[a-z0-9-]+|\bcomponente\b|"
+    r"\bdocumento[- ]?fonte\b|\bfonte[s]?\b|\bv\d+\.\d+",
+    re.IGNORECASE,
+)
+
+
+def check_cockpit_cites_source(response: str) -> bool:
+    """Cockpit policy: cite a component/source document, or explicitly decline."""
+    text = (response or "").lower().replace("’", "'")
+    if any(marker in text for marker in _REFUSAL_MARKERS):
+        return True
+    return bool(_COCKPIT_CITATION.search(response or ""))
+
+
+cockpit_cites_source = evaluator(check_cockpit_cites_source, name="cockpit_cites_source")
