@@ -241,7 +241,8 @@ or not anyone uses the app) from **usage meters** (≈\$0 when idle).
 | Azure AI Foundry | Cognitive Services S0 | no fixed fee | 🟢 pay per token (below) |
 | Model usage | `gpt-4.1-mini` GlobalStandard | ~\$0.40 / 1M input · ~\$1.60 / 1M output tok | 🟢 usage — a showcase is cents–few \$/mo |
 | Embeddings | `text-embedding-3-*` | ~\$0.02 / 1M tok | 🟢 usage — negligible |
-| Storage | Standard_LRS | <\$1/mo | 🟢 usage |
+| Storage (blob corpus) | Standard_LRS | <\$1/mo | 🟢 usage |
+| **Azure Files** (tickets) | 1 GiB share on the same account | ~\$0.06/mo + tiny txns → **cents** | 🟢 usage — persists `data/tickets.jsonl` across scale-to-zero |
 
 **Bottom line:**
 - **Marginal cost of the backend + web deploy** (Step 7): **~\$0–3/mo** — compute is scale-to-zero, the ACR already existed, so it's just a little Log Analytics ingestion.
