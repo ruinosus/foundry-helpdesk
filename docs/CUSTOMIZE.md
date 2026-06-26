@@ -26,6 +26,11 @@ the deploy pipeline — is reusable Foundry plumbing you keep as-is.
 
 The grounded answers come from a Foundry IQ knowledge base built from markdown.
 
+> **Corpus in PDF / Word / PowerPoint / HTML?** Convert it to Markdown first with
+> Microsoft **[MarkItDown](https://github.com/microsoft/markitdown)** — there's a
+> helper: `./scripts/to-markdown.sh -o apps/backend/app/knowledge/corpus *.pdf`
+> (handles PDF, Office, HTML, and images via OCR). Then continue below.
+
 1. Replace the files in `apps/backend/app/knowledge/corpus/` with **your** documents
    (plain markdown; one topic per file; the **filename/H1 title is what gets cited**).
    Delete the helpdesk runbooks.
