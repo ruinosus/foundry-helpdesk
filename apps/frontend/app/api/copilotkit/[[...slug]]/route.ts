@@ -1,5 +1,9 @@
 // CopilotKit runtime route — bridges the browser to the backend AG-UI endpoint.
 //
+// Catch-all (`[[...slug]]`) so the v2 client's sub-paths (e.g.
+// `/api/copilotkit/agent/<id>/run`, runtime sync) reach the runtime handler — an
+// exact `route.ts` only matches `/api/copilotkit` and 404s the agent-run calls.
+//
 // Resume format bridge: the CopilotKit runtime validates `resume` as an ARRAY
 // (the AG-UI client form, [{ interruptId, status, payload }]), but the
 // agent-framework backend expects a DICT ({ interrupts: [{ id, value }] }).
@@ -55,7 +59,7 @@ const runtime = new CopilotRuntime({
   agents: { helpdesk, "helpdesk-hosted": helpdeskHosted, cockpit },
 });
 
-export const POST = async (req: NextRequest) => {
+const handle = (req: NextRequest) => {
   const { handleRequest } = copilotRuntimeNextJSAppRouterEndpoint({
     runtime,
     serviceAdapter: new ExperimentalEmptyAdapter(),
@@ -63,3 +67,6 @@ export const POST = async (req: NextRequest) => {
   });
   return handleRequest(req);
 };
+
+export const GET = handle;
+export const POST = handle;
