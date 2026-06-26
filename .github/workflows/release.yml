@@ -2,7 +2,7 @@ name: Release
 
 # Release-please reads the Conventional Commits on main and maintains a rolling
 # "release PR" that bumps the version + regenerates CHANGELOG.md. Merging that PR
-# cuts a git tag + GitHub Release — which is what gates the production deploy
+# should cut a git tag + GitHub Release — which is what gates the production deploy
 # (see deploy.yml › on.release). No deploy happens here; this only cuts the release.
 on:
   push:
@@ -25,3 +25,39 @@ jobs:
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+
+      - uses: actions/checkout@v5
+
+      # Safety net. release-please-action@v4 here intermittently REFUSES to tag a
+      # just-merged release PR ("There are untagged, merged release PRs outstanding
+      # - aborting"), so the GitHub Release never gets cut and the version stalls
+      # (it needed a manual cut for both v0.2.0 and v0.3.0). If the manifest version
+      # has no release yet, cut it from the CHANGELOG and mark the merged release PR
+      # `autorelease: tagged` so the next run reconciles cleanly.
+      # Note: a GITHUB_TOKEN-created release does NOT trigger deploy.yml's
+      # `on: release` (GitHub's anti-recursion rule), so the production deploy is
+      # dispatched manually (deploy.yml has workflow_dispatch) or via a release
+      # published by a human/PAT.
+      - name: Cut release if release-please left the version untagged
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION="$(jq -r '.["."]' .release-please-manifest.json)"
+          TAG="v${VERSION}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "$TAG already released — nothing to do."
+            exit 0
+          fi
+          echo "release-please left $TAG untagged — cutting it from the CHANGELOG."
+          awk -v v="$VERSION" '
+            $0 ~ "^## \\[" v "\\]" { f = 1 }
+            f && $0 ~ "^## \\[" && $0 !~ "\\[" v "\\]" { exit }
+            f { print }
+          ' CHANGELOG.md > /tmp/notes.md
+          gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --notes-file /tmp/notes.md
+          PR="$(gh pr list --state merged --search 'label:"autorelease: pending"' --json number --jq '.[0].number // empty')"
+          if [ -n "$PR" ]; then
+            gh pr edit "$PR" --add-label "autorelease: tagged" --remove-label "autorelease: pending"
+            echo "Marked PR #$PR autorelease: tagged."
+          fi
