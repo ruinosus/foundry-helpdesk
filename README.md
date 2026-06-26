@@ -66,7 +66,7 @@ CrashLoopBackOff…"*, *"What's the weather in Paris?"* (off-corpus → declines
 | 2 | Multi-agent workflow | `triage → retrieve → resolve` steps stream to the UI |
 | 3 | Memory + **Entra ID / OBO** | per-user memory, Foundry called *as the signed-in user* |
 | 4 | Human-in-the-loop | ticket escalation pauses for explicit approval before `create_ticket` |
-| 5 | Evaluation | deterministic policy gate + Foundry groundedness/relevance/coherence |
+| 5 | Evaluation | deterministic policy gate + Foundry judges, surfaced on `/evals` from the project; CI runs Microsoft's official [`ai-agent-evals`](https://github.com/microsoft/ai-agent-evals) action on the deployed agent |
 | 6 | Hosted-agent deploy | same workflow packaged as a managed Foundry hosted agent |
 
 ## Architecture

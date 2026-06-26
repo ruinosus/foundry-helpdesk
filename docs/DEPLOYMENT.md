@@ -224,6 +224,29 @@ List the built-in RAI policies for `--policy`:
 
 ---
 
+## Agent evaluation (Foundry `ai-agent-evals` action)
+
+The repo uses Microsoft's **official** [`microsoft/ai-agent-evals`](https://github.com/microsoft/ai-agent-evals)
+GitHub Action to evaluate the **deployed hosted agent** (`helpdesk-concierge`) with
+Foundry's hosted judges. Workflow: `.github/workflows/agent-evals.yml` (manual).
+
+```bash
+# absolute scores for the current agent (v3)
+gh workflow run agent-evals.yml
+
+# compare v3 against a baseline (v2) — confidence intervals + significance test
+gh workflow run agent-evals.yml -f version=3 -f baseline=helpdesk-concierge:2
+```
+
+- **Dataset:** `apps/backend/eval/datasets/agent-evals.json` (generated from the golden
+  set; `evaluators: groundedness, relevance, coherence, intent_resolution`).
+- **Auth:** the same Azure OIDC + repo vars as the other cloud workflows.
+- **Output:** scores land in the **Actions run summary**; with `baseline`, a side-by-side
+  comparison with confidence intervals. *(Enable the repo Wiki for the full detailed view.)*
+- **Advisory, not blocking** — see the workflow header for why (small golden set →
+  hard-gate the deterministic ASSERTs in `ci.yml`, keep judge scores advisory until the
+  set grows + judges are calibrated, then graduate to a baseline/CI gate).
+
 ## Cost & teardown
 
 Pay-as-you-go, East US 2, USD. The numbers are order-of-magnitude — check the
