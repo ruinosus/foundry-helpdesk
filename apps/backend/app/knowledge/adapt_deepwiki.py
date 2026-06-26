@@ -26,8 +26,8 @@ a sorted-path fallback) so it survives layout drift. Verify against your real ru
 Run:
     cd apps/backend
     uv run python -m app.knowledge.adapt_deepwiki \
-        --repo ~/projects/cockpit/cockpit-schedule-api \
-        --component cockpit-schedule-api --version v1.4.1 \
+        --repo /path/to/your/repo \
+        --component your-component --version vX.Y.Z \
         --out /tmp/wiki-out-copilot
 """
 
