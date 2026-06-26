@@ -33,6 +33,13 @@ class Settings(BaseSettings):
     azure_storage_resource_id: str = ""
     azure_storage_container: str = "corpus"
 
+    # --- Second domain: Cockpit expert (its own KB over the cockpit docbundles) ---
+    cockpit_search_knowledge_base: str = "cockpit-kb"
+    cockpit_storage_container: str = "cockpit-corpus"
+    # Path to the aap-kb docbundles/ dir (internal Cockpit corpus). Set via env
+    # COCKPIT_DOCBUNDLES; the content is ingested to the cloud KB only, never committed.
+    cockpit_docbundles_path: str = ""
+
     # --- Phase 3: Entra ID + On-Behalf-Of (per-user identity) ---
     # Backend API app registration (the audience of incoming tokens).
     entra_tenant_id: str = ""

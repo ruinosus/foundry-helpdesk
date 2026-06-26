@@ -206,13 +206,17 @@ def create_knowledge_base(index_client: SearchIndexClient) -> None:
     print(f"Knowledge base '{kb_name}' created/updated.")
 
 
-def wait_for_ingestion(index_client: SearchIndexClient, timeout_s: int = 600) -> None:
+def wait_for_ingestion(
+    index_client: SearchIndexClient,
+    timeout_s: int = 600,
+    ks_name: str = KNOWLEDGE_SOURCE_NAME,
+) -> None:
     """Poll the knowledge source status until indexing settles (best-effort)."""
     print("Waiting for indexing to complete (this can take a few minutes)...")
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
         try:
-            status = index_client.get_knowledge_source_status(KNOWLEDGE_SOURCE_NAME)
+            status = index_client.get_knowledge_source_status(ks_name)
         except Exception as exc:  # noqa: BLE001 - status API is preview; tolerate gaps
             print(f"  (status check unavailable: {exc}); skipping wait.")
             return
