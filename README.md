@@ -37,6 +37,22 @@ cd apps/frontend && npm install && npm run dev      # http://localhost:3000
 Full runbook + the manual steps behind the scripts: [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md).
 Adapt it to your own domain: [`docs/CUSTOMIZE.md`](./docs/CUSTOMIZE.md).
 
+## Demo mode — see it with **no Azure**
+
+Want to see the experience before provisioning anything? A committed AG-UI fixture is
+replayed by [CopilotKit **aimock**](https://github.com/CopilotKit/aimock) — the real
+frontend renders the full flow (steps → grounded answer → HITL approval) with **no
+Azure and no Python backend**:
+
+```bash
+cd apps/frontend && npm install && npm run demo      # → http://localhost:3000
+```
+
+The fixture is **recorded from a real run** (`./scripts/demo-record.sh`), so it's the
+genuine workflow output, not a hand-faked script — just replayed deterministically.
+(One-time: someone with Azure records it once and commits
+`apps/frontend/demo/fixtures/`; after that `npm run demo` needs nothing.)
+
 ## Status — all six phases green
 
 | Phase | Pillar | What it proves |

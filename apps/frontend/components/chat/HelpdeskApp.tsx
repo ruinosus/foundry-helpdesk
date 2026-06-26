@@ -10,6 +10,7 @@ import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import { apiScopes, authConfigured } from "@/lib/auth/msal";
 import { branding } from "@/lib/branding";
+import { demoMode } from "@/lib/demo";
 import { TicketApproval } from "@/components/chat/TicketApproval";
 
 const WorkflowSteps = dynamic(
@@ -44,19 +45,29 @@ function Chat({ authorization }: { authorization?: string }) {
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 4px" }}>
-          <div className="seg">
-            <button className={mode === "live" ? "on" : ""} onClick={() => setMode("live")}>
-              Live workflow
-            </button>
-            <button className={mode === "hosted" ? "on" : ""} onClick={() => setMode("hosted")}>
-              Hosted agent
-            </button>
-          </div>
-          <span className="muted" style={{ fontSize: 12 }}>
-            {mode === "live"
-              ? "AG-UI · live steps, approval, per-user OBO + memory"
-              : "Foundry Agent Service · managed, Responses protocol"}
-          </span>
+          {demoMode ? (
+            // Demo mode talks to a recorded aimock fixture — only the Live AG-UI path
+            // is replayed, so hide the engine toggle and flag that it's mocked.
+            <span className="pill" style={{ fontSize: 12 }}>
+              ● Demo · replayed fixture, no Azure
+            </span>
+          ) : (
+            <>
+              <div className="seg">
+                <button className={mode === "live" ? "on" : ""} onClick={() => setMode("live")}>
+                  Live workflow
+                </button>
+                <button className={mode === "hosted" ? "on" : ""} onClick={() => setMode("hosted")}>
+                  Hosted agent
+                </button>
+              </div>
+              <span className="muted" style={{ fontSize: 12 }}>
+                {mode === "live"
+                  ? "AG-UI · live steps, approval, per-user OBO + memory"
+                  : "Foundry Agent Service · managed, Responses protocol"}
+              </span>
+            </>
+          )}
         </div>
 
         {mode === "live" ? (
