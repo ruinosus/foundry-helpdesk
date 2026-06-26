@@ -6,13 +6,31 @@ cloud-published Foundry Helpdesk. Read top to bottom the first time.
 > Architecture & repo layout: [`../README.md`](../README.md). This doc is the
 > operational runbook.
 
+## Quickstart (the short path)
+
+Two scripts collapse most of the manual steps below. From the repo root, after
+`azd auth login && az login`:
+
+```bash
+azd up                      # provision all Azure infra (Step 1)
+./scripts/setup-entra.sh    # OPTIONAL: create the 2 Entra app regs + write env (Step 3)
+./scripts/bootstrap.sh      # fill .env from azd, ingest the KB, provision memory (Steps 2+4)
+
+cd apps/backend  && uv run uvicorn app.main:app --port 8000 --reload   # Step 5
+cd apps/frontend && npm install && npm run dev                        # → http://localhost:3000
+```
+
+Skip `setup-entra.sh` to run **without sign-in** (single `DefaultAzureCredential`
+identity). The rest of this doc is the **reference** behind those scripts — read it
+to understand or do any step by hand.
+
 ## What gets provisioned
 
 | Layer | How | Where |
 | --- | --- | --- |
 | Foundry account + project + models, Azure AI Search, Storage, ACR, Container Apps env, RBAC | **Bicep** via `azd up` (control plane) | `infra/` |
-| Knowledge base + memory store | **Python scripts** (data plane) | `apps/backend/{app/knowledge/ingest.py, cli/}` |
-| Entra app registrations (SPA + API) for sign-in + OBO | **manual** (portal) — see Step 3 | — |
+| Knowledge base + memory store | **Python scripts** (data plane) — or `scripts/bootstrap.sh` | `apps/backend/{app/knowledge/ingest.py, cli/}` |
+| Entra app registrations (SPA + API) for sign-in + OBO | `scripts/setup-entra.sh` (or manual — Step 3) | — |
 | Hosted agent (Foundry Agent Service) | `azd deploy helpdesk-concierge` + post-deploy RBAC | `apps/hosted-agent/` |
 | Backend + frontend (Container Apps) | `azd up` / `azd deploy backend web` | `apps/{backend,frontend}/` |
 
@@ -72,10 +90,13 @@ without them the app falls back to `DefaultAzureCredential` and skips OBO).
 
 ## Step 3 — Entra app registrations (sign-in + OBO)
 
-This is the only **manual** part, and the easiest to get wrong. You create **two**
-app registrations: a **SPA** (the browser signs in) and an **API** (the backend
-validates the token and exchanges it On-Behalf-Of the user). Skip this whole step
-to run without auth (single shared `DefaultAzureCredential` identity).
+> **Fast path:** `./scripts/setup-entra.sh` does everything in this step (idempotent)
+> and writes the env files. The steps below are the reference / manual fallback if
+> consent needs a portal click.
+
+You create **two** app registrations: a **SPA** (the browser signs in) and an **API**
+(the backend validates the token and exchanges it On-Behalf-Of the user). Skip this
+whole step to run without auth (single shared `DefaultAzureCredential` identity).
 
 ### 3a. API app registration (the backend's audience)
 
@@ -113,6 +134,9 @@ The frontend must run on **port 3000** (it must match the SPA redirect URI).
 ---
 
 ## Step 4 — Data-plane objects (KB + memory)
+
+> **Fast path:** `./scripts/bootstrap.sh` runs both of these (and fills `.env` from
+> the azd outputs first). The manual commands:
 
 ```bash
 cd apps/backend
