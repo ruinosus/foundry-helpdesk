@@ -39,3 +39,7 @@ apps/backend/eval/datasets/cockpit_golden.jsonl
 
 # GitHub App / TLS private keys — never commit
 *.pem
+
+# Local test credentials (Phase 4) — never commit
+*.local.md
+TEST-CREDENTIALS.local.md

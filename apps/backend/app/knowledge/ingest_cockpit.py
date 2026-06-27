@@ -284,11 +284,30 @@ def main() -> None:
     # and is queryable during the run; blocking on the full ~1s/chunk embedding pass
     # just stalls the caller.
     purge_orphans(credential, settings.cockpit_storage_container)
-    trigger_indexer(indexer_client)  # non-blocking
-    print(
-        "\nDone (uploads + deletions reconciled). The indexer is running async —\n"
-        "new pages appear in the KB incrementally over the next few minutes."
+
+    # Phase 4: when classification groups are configured, the ingest owns the full
+    # document-level ACL too — so a re-ingest preserves the per-tier `groups` instead of
+    # needing acl_setup run by hand. Stamping needs the index populated, so run the
+    # indexer to completion first; otherwise keep the fast non-blocking path.
+    acl_on = bool(
+        settings.cockpit_acl_public_group
+        and settings.cockpit_acl_internal_group
+        and settings.cockpit_acl_confidential_group
     )
+    if acl_on:
+        print("== Step 5/5: indexer (blocking) + document-level ACL stamping ==")
+        trigger_indexer(indexer_client, wait_s=900)
+        from app.knowledge.acl_setup import setup_acl
+
+        setup_acl()
+        print("\nDone (corpus indexed + ACL tiers stamped + query-time trimming enabled).")
+    else:
+        trigger_indexer(indexer_client)  # non-blocking
+        print(
+            "\nDone (uploads + deletions reconciled). The indexer is running async —\n"
+            "new pages appear in the KB incrementally over the next few minutes.\n"
+            "(Set COCKPIT_ACL_*_GROUP to also stamp document-level access tiers.)"
+        )
 
 
 if __name__ == "__main__":
