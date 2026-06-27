@@ -58,11 +58,14 @@ async def main() -> None:
     )
 
     # Foundry IQ knowledge base (agentic) — the same cockpit-kb the live app grounds in.
+    # reasoning_effort="medium" = iterative query planning for retrieval completeness
+    # (Phase 2); mirrors app/agents/cockpit.py.
     search = AzureAISearchContextProvider(
         endpoint=os.environ["AZURE_SEARCH_ENDPOINT"],
         knowledge_base_name=os.environ["AZURE_SEARCH_KNOWLEDGE_BASE"],
         credential=credential,
         mode="agentic",
+        retrieval_reasoning_effort="medium",
     )
 
     async with search:

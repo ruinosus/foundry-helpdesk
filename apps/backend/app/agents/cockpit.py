@@ -39,11 +39,17 @@ def build_cockpit_agent() -> Agent:
     # Runs in a context-provider hook (before_run), injecting the retrieved Cockpit docs
     # (with citations) into context; it does NOT emit a model tool call, so multi-turn
     # over AG-UI is clean without any tool-message sanitizing.
+    #
+    # reasoning_effort="medium" enables iterative query planning (vs "minimal" = a single
+    # semantic search). Measured on the MCP-enumeration golden it lifts retrieval recall
+    # 6/12 → 8/12 (8/9 servers) — the completeness lever (Phase 2 of the assurance plan).
+    # Trade-off: ~2x context + higher latency; worth it for a completeness-first KB agent.
     search = AzureAISearchContextProvider(
         endpoint=settings.azure_search_endpoint,
         knowledge_base_name=settings.cockpit_search_knowledge_base,
         credential=credential,
         mode="agentic",
+        retrieval_reasoning_effort="medium",
     )
     return client.as_agent(
         name="CockpitExpert",
