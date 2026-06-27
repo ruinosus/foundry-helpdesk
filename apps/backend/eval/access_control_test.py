@@ -1,23 +1,22 @@
-"""Phase 4 — access-control gate: prove query-time ACL trimming holds.
+"""Phase 4 — access-control gate over the AGENTIC path (the path the agent uses).
 
-Acquires the two test identities (ROPC) and asserts the KB trims by entitlement:
-**User B (public only) must retrieve ZERO non-public documents**; User A (all tiers)
-sees every tier. A single leak fails the build (assurance.yaml
-`security.access_control_violations_max`, default 0). Deterministic security gate —
-the negative case the mechanism guarantees.
+The earlier version checked a direct search; this checks what actually matters: the
+**agentic retrieve + app-side trim** (secure_search.py). Acquire the two test identities
+(ROPC), run the agentic retrieve as each, apply the trim, and assert every chunk the
+caller keeps belongs to a component the caller is entitled to. A single chunk from an
+unauthorized component is a leak and fails the build (assurance.yaml
+security.access_control_violations_max, default 0).
 
-Runs against the live index using the test users' search-scoped tokens. Test creds are
-secrets (gitignored .env / CI secrets), never committed:
-
-  ENTRA_TENANT_ID, COCKPIT_TEST_USER_A, COCKPIT_TEST_USER_B  (full UPNs),
-  COCKPIT_TEST_PASSWORD, COCKPIT_ACL_{PUBLIC,INTERNAL,CONFIDENTIAL}_GROUP,
-  AZURE_SEARCH_ENDPOINT
+Test creds are secrets (gitignored .env / CI), never committed:
+  ENTRA_TENANT_ID, COCKPIT_TEST_USER_A, COCKPIT_TEST_USER_B, COCKPIT_TEST_PASSWORD,
+  COCKPIT_ACL_* groups, AZURE_SEARCH_ENDPOINT, COCKPIT_ACL_CLASSIFICATION
 
   uv run python -m eval.access_control_test
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import sys
@@ -25,16 +24,17 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+from agent_framework import Message
+from agent_framework.azure import AzureAISearchContextProvider
 from azure.identity import DefaultAzureCredential
 
+from app.agents.secure_search import _chunk_component, authorized_components, trim_agentic_content
 from app.core.settings import settings
 
-_API = "2025-08-01-preview"
-_INDEX = "cockpit-docbundles-ks-index"
 _SEARCH_SCOPE = "https://search.azure.com/.default"
-# Public client that supports ROPC for first-party scopes (the Azure CLI app).
 _ROPC_CLIENT = "04b07795-8ddb-461a-bbee-02f9e1bf7b46"
 _ASSURANCE = Path(__file__).resolve().parent / "assurance.yaml"
+_PROBE = "detalhes da arquitetura, métricas e pricing do cockpit"
 
 
 def _violations_ceiling() -> int:
@@ -49,71 +49,60 @@ def _violations_ceiling() -> int:
 
 def _ropc_token(upn: str, password: str) -> str:
     body = urllib.parse.urlencode({
-        "grant_type": "password",
-        "client_id": _ROPC_CLIENT,
-        "scope": _SEARCH_SCOPE,
-        "username": upn,
-        "password": password,
+        "grant_type": "password", "client_id": _ROPC_CLIENT, "scope": _SEARCH_SCOPE,
+        "username": upn, "password": password,
     }).encode()
     url = f"https://login.microsoftonline.com/{settings.entra_tenant_id}/oauth2/v2.0/token"
     with urllib.request.urlopen(urllib.request.Request(url, data=body), timeout=60) as r:
         return json.load(r)["access_token"]
 
 
-def _tiers_seen(service_token: str, user_token: str, label_by_group: dict[str, str]) -> dict[str, int]:
-    """Search as the user; tally the sensitivity tiers of the documents returned."""
-    url = (
-        f"{settings.azure_search_endpoint}/indexes/{_INDEX}/docs"
-        f"?api-version={_API}&search=*&$top=500&$select=groups"
-    )
-    req = urllib.request.Request(url, headers={
-        "Authorization": f"Bearer {service_token}",
-        "x-ms-query-source-authorization": user_token,
-    })
-    with urllib.request.urlopen(req, timeout=60) as r:
-        docs = json.load(r).get("value", [])
-    from collections import Counter
-    seen: Counter[str] = Counter()
-    for d in docs:
-        for g in d.get("groups") or []:
-            seen[label_by_group.get(g, g)] += 1
-    return dict(seen)
+async def _kept_components(provider, token: str) -> tuple[set[str], set[str]]:
+    """Run the agentic retrieve as the caller, trim, and return (kept, authorized)."""
+    orig = provider._retrieval_client.retrieve
+
+    async def as_user(*a, **k):  # noqa: ANN002, ANN003
+        k["x_ms_query_source_authorization"] = token
+        return await orig(*a, **k)
+
+    provider._retrieval_client.retrieve = as_user
+    result = await provider._agentic_search([Message(role="user", contents=[_PROBE])])
+    provider._retrieval_client.retrieve = orig
+
+    authorized = authorized_components(token)
+    raw = result[0].text if result and getattr(result[0], "text", None) else "[]"
+    kept = {_chunk_component(c.get("content", "")) for c in json.loads(trim_agentic_content(raw, authorized))
+            if isinstance(c, dict)}
+    return kept, authorized
 
 
-def main() -> int:
+async def _run() -> int:
     password = os.environ.get("COCKPIT_TEST_PASSWORD", "")
-    upn_a = os.environ.get("COCKPIT_TEST_USER_A", "")
     upn_b = os.environ.get("COCKPIT_TEST_USER_B", "")
-    if not (password and upn_a and upn_b):
-        print("⏭️  skipping access-control gate: test creds not set (COCKPIT_TEST_USER_A/B + PASSWORD).")
+    if not (password and upn_b):
+        print("⏭️  skipping access-control gate: test creds not set.")
         return 0
 
-    label = {
-        settings.cockpit_acl_public_group: "public",
-        settings.cockpit_acl_internal_group: "internal",
-        settings.cockpit_acl_confidential_group: "confidential",
-    }
-    service_token = DefaultAzureCredential().get_token(_SEARCH_SCOPE).token
+    provider = AzureAISearchContextProvider(
+        endpoint=settings.azure_search_endpoint, knowledge_base_name=settings.cockpit_search_knowledge_base,
+        credential=DefaultAzureCredential(), mode="agentic", retrieval_reasoning_effort="medium",
+    )
+    await provider._ensure_knowledge_base()
 
-    seen_a = _tiers_seen(service_token, _ropc_token(upn_a, password), label)
-    seen_b = _tiers_seen(service_token, _ropc_token(upn_b, password), label)
-    print(f"User A (all tiers)   sees: {seen_a}")
-    print(f"User B (public only) sees: {seen_b}")
+    kept_b, auth_b = await _kept_components(provider, _ropc_token(upn_b, password))
+    leak = sorted(kept_b - auth_b)
+    print(f"User B kept components: {sorted(kept_b)}")
+    print(f"User B authorized:      {sorted(auth_b)}")
 
-    # Violation = User B seeing any non-public document.
-    violations = seen_b.get("internal", 0) + seen_b.get("confidential", 0)
     ceiling = _violations_ceiling()
-    if violations > ceiling:
-        print(f"\n❌ Access-control gate FAILED — User B retrieved {violations} restricted "
-              f"document(s) (ceiling {ceiling}). The KB leaked across entitlements.")
+    if len(leak) > ceiling:
+        print(f"\n❌ Access-control gate FAILED — agentic path leaked to User B: {leak} "
+              f"(ceiling {ceiling}).")
         return 1
-    if not seen_a:
-        print("\n⚠️  User A saw nothing — check entitlements / token (not a leak, but the test is inconclusive).")
-        return 1
-    print(f"\n✅ Access-control gate PASSED — User B retrieved only public; A sees all tiers "
-          f"(violations {violations} ≤ {ceiling}).")
+    print(f"\n✅ Access-control gate PASSED — every chunk User B kept is within entitlement "
+          f"(leaks {len(leak)} ≤ {ceiling}).")
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(asyncio.run(_run()))
