@@ -16,7 +16,7 @@ import asyncio
 import os
 from pathlib import Path
 
-from agent_framework import FileSkillsSource, SkillsProvider
+from agent_framework import FileSkillsSource, SkillsProvider, agent_middleware
 from agent_framework.azure import AzureAISearchContextProvider
 from agent_framework.foundry import FoundryChatClient
 from agent_framework_foundry_hosting import ResponsesHostServer
@@ -35,6 +35,33 @@ COCKPIT_INSTRUCTIONS = (
 )
 
 _SKILLS_DIR = Path(__file__).parent / "skills"
+
+
+# Mirrors app/agents/cockpit.py: strip orphaned skill tool calls from replayed history
+# so multi-turn doesn't 400 ("No tool output found for function call"). Match ONLY tool
+# content by its `.type` — never the user's `type="text"` message (a broader check would
+# drop the user turn and starve agentic retrieval). The agentic retrieval itself runs in
+# a context-provider hook and emits no model tool call; the grounded-qa skill's
+# load_skill / read_skill_resource calls are the ones that need sanitizing on replay.
+def _is_tool_content(content) -> bool:
+    return getattr(content, "type", None) in (
+        "function_call",
+        "function_result",
+        "tool_call",
+        "tool_result",
+    )
+
+
+@agent_middleware
+async def _drop_replayed_tool_messages(context, call_next):
+    msgs = context.messages
+    if msgs:
+        msgs[:] = [
+            m
+            for m in msgs
+            if not any(_is_tool_content(c) for c in (getattr(m, "contents", None) or []))
+        ]
+    await call_next()
 
 
 async def main() -> None:
@@ -63,6 +90,7 @@ async def main() -> None:
             description="Avanade Cockpit platform expert grounded in the Cockpit knowledge base.",
             instructions=COCKPIT_INSTRUCTIONS,
             context_providers=[search, skills],
+            middleware=[_drop_replayed_tool_messages],
             # Foundry hosting manages conversation history; don't double-store.
             default_options={"store": False},
         )
