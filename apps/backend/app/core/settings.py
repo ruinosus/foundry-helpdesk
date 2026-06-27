@@ -40,11 +40,18 @@ class Settings(BaseSettings):
     cockpit_storage_container: str = "cockpit-corpus"
 
     # --- Phase 4: document-level access control (classification tiers) ---
-    # Entra group object-IDs per sensitivity tier (from infra/entra). Ingest stamps each
-    # doc's groupIds = the tier's group; retrieval trims to the caller's groups.
+    # Entra group object-IDs per sensitivity tier (from infra/entra). Tier NAMES are the
+    # generic standard (public/internal/confidential); the per-document tier is OWNER DATA
+    # (see cockpit_acl_classification), never code. The mechanism maps tier→group here.
     cockpit_acl_public_group: str = ""
     cockpit_acl_internal_group: str = ""
     cockpit_acl_confidential_group: str = ""
+    # Path to the owner's classification map (JSON: {document-key: tier-name}). External +
+    # gitignored, like the corpus — the data owner declares it (or wiki_builder inherits it
+    # from each source repo's access). The code carries NO classification logic.
+    cockpit_acl_classification: str = ""
+    # Tier for documents absent from the map — fail-closed (most restrictive) by default.
+    cockpit_acl_default_tier: str = "confidential"
     # Path to the aap-kb docbundles/ dir (internal Cockpit corpus). Set via env
     # COCKPIT_DOCBUNDLES; the content is ingested to the cloud KB only, never committed.
     cockpit_docbundles_path: str = ""
