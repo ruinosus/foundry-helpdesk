@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.7.0](https://github.com/ruinosus/foundry-helpdesk/compare/v0.6.0...v0.7.0) (2026-06-27)
+
+
+### Features
+
+* **assurance:** Phase 5 — red-team gate (the ACL trim is injection-proof) ([#60](https://github.com/ruinosus/foundry-helpdesk/issues/60)) ([6a29510](https://github.com/ruinosus/foundry-helpdesk/commit/6a2951004c1a8ece4c9633d1ab971714f32c89ac))
+* **assurance:** Phase 6 — package the mechanism (CI gates + METHOD + template) ([#62](https://github.com/ruinosus/foundry-helpdesk/issues/62)) ([283fa6e](https://github.com/ruinosus/foundry-helpdesk/commit/283fa6e52250d7afb21703738579f079286fe740))
+
+
+### Bug Fixes
+
+* **assurance:** review fixes — attribution bug + robustness (wave 1: code/CI) ([#63](https://github.com/ruinosus/foundry-helpdesk/issues/63)) ([4a4a78f](https://github.com/ruinosus/foundry-helpdesk/commit/4a4a78f78714f99c25bbf6caac656f1adfceb16a))
+
+
+### Documentation
+
+* review fixes — align all docs with the as-built model (wave 2) ([#64](https://github.com/ruinosus/foundry-helpdesk/issues/64)) ([0e6c461](https://github.com/ruinosus/foundry-helpdesk/commit/0e6c4618a2fd63b148519045476c30866bae9ddd))
+
 ## [0.6.0](https://github.com/ruinosus/foundry-helpdesk/compare/v0.5.0...v0.6.0) (2026-06-27)
 
 
