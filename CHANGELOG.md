@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.0](https://github.com/ruinosus/foundry-helpdesk/compare/v0.3.0...v0.4.0) (2026-06-27)
+
+
+### Features
+
+* **ci:** use a GitHub App token for release-please (enterprise/compliant) ([#45](https://github.com/ruinosus/foundry-helpdesk/issues/45)) ([9a94348](https://github.com/ruinosus/foundry-helpdesk/commit/9a9434810e2b3fec9c84ce9f9918fc11cbcb3ac0))
+
+
+### Bug Fixes
+
+* **ci:** cut the release when release-please leaves it untagged ([#42](https://github.com/ruinosus/foundry-helpdesk/issues/42)) ([4e09190](https://github.com/ruinosus/foundry-helpdesk/commit/4e09190ed86063a9a232cef8521380cce81d9bdc))
+* **deploy:** set COCKPIT_AGUI_URL on the web container ([#44](https://github.com/ruinosus/foundry-helpdesk/issues/44)) ([866eca0](https://github.com/ruinosus/foundry-helpdesk/commit/866eca0df5eb44725f07d80e875d0a84e5ccef30))
+
 ## [0.3.0](https://github.com/ruinosus/foundry-helpdesk/compare/v0.2.0...v0.3.0) (2026-06-26)
 
 
