@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.1](https://github.com/ruinosus/foundry-helpdesk/compare/v0.4.0...v0.4.1) (2026-06-27)
+
+
+### Bug Fixes
+
+* **cockpit:** retrieval starved by over-broad tool-message filter ([#49](https://github.com/ruinosus/foundry-helpdesk/issues/49)) ([d6aad55](https://github.com/ruinosus/foundry-helpdesk/commit/d6aad554041e3892ad39b1a455243dfbcf429ff3))
+* **cockpit:** semantic retrieval so multi-turn chat works ([#47](https://github.com/ruinosus/foundry-helpdesk/issues/47)) ([3a6bb34](https://github.com/ruinosus/foundry-helpdesk/commit/3a6bb34fe220a979d578f823d5ff8a74a231129e))
+
 ## [0.4.0](https://github.com/ruinosus/foundry-helpdesk/compare/v0.3.0...v0.4.0) (2026-06-27)
 
 
