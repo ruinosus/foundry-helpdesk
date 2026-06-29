@@ -120,7 +120,10 @@ def _build_from_connection(conn, roles: set[str]) -> MCPStreamableHTTPTool | Non
         "name": f"mcp_{server.id}",
         "url": url,
         "allowed_tools": allowed,
-        "approval_mode": "never_require",  # Task 4 sets the real approval dict
+        "approval_mode": {
+            "always_require_approval": list(writes),
+            "never_require_approval": list(reads),
+        },
     }
     if server.auth == "public":
         pass  # no auth header
