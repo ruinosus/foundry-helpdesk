@@ -50,7 +50,8 @@ Per [ADR-008](../../adr/ADR-008-foundry-connections-app-configuration.md), a `Co
 @dataclass(frozen=True)
 class Connection:
     id: str                            # generated (slug/uuid)
-    kind: str                          # mcp_github | mcp_ado | mcp_azure | ... (maps to a registry server id)
+    kind: str                          # a registry server id VERBATIM: github | azdo | azure | entra | learn | m365
+                                       #   (the registry catalog is the source of truth — no mcp_/ado aliasing)
     label: str
     foundry_connection_id: str = ""    # the Foundry project connection that brokers auth (Microsoft-native)
     keyvault_ref: str = ""             # alternative: the customer's Key Vault URI (non-Foundry)
@@ -73,8 +74,10 @@ separate entities `RowKey=conn:{id}` only if a tenant needs many; the interface 
 
 **Relationship to the MCP registry (#75):** `registry.py` (servers-as-data) is the **catalog**
 (server types + tool governance); a `Connection` is the **per-tenant instance** (which server this
-tenant enabled + the reference). `Connection.kind` maps to a registry server id; the UI's "add
-connection" `kind` dropdown is the registry catalog.
+tenant enabled + the reference). `Connection.kind` is a **registry server id verbatim** (`github`,
+`azdo`, `azure`, … — note the registry uses `azdo`, not `ado`; no `mcp_` prefix); the catalog is the
+single source of truth, so validation is "`kind` ∈ registry ids" and the UI's `kind` dropdown is the
+registry list.
 
 ## 2. Self-service onboarding + the Admin + allow-list gate
 
@@ -85,13 +88,21 @@ Chicken-and-egg: A's `resolve_tenant` denies (403) when there's no record, but o
 # PlatformSettings (global, WE control it)
 onboarding_allowed_tids: str = ""      # CSV of tids permitted to onboard (controlled rollout)
 
-# Separate from require_user (which resolves the tenant and would 403 with no record):
-def onboarding_guard(user) -> None:
-    if "Admin" not in (user.roles or []):    # app role granted by the CUSTOMER's Entra admin post-consent
+# Separate from require_user (which resolves the tenant and would 403 with no record). It
+# authenticates via the scheme, sets _current_user (so the handler reads the tid), checks the
+# gates, but does NOT resolve the tenant:
+def onboarding_guard(user: User = Security(azure_scheme)) -> User:
+    _current_user.set(user)                          # so POST /onboard reads the caller's tid
+    if "Admin" not in (user.roles or []):            # app role granted by the CUSTOMER's Entra admin post-consent
         raise HTTPException(403, "requires Admin")
-    if user.tid not in _allowed_tids():      # platform allow-list — WE approve who enters
+    if getattr(user, "tid", None) not in _allowed_tids():  # platform allow-list — WE approve who enters
         raise HTTPException(403, "tenant not allow-listed")
+    return user
 ```
+
+> `getattr(user, "tid", None)` (defensive, like A's `resolve_tenant`): a token without the `tid`
+> claim → 403, not a 500. The `/tenant` router is mounted **only in `shared` mode** (§3), where
+> `auth_enabled` is necessarily true — so `require_role`'s auth-off no-op branch never applies here.
 
 **Flow:** customer admin-consents the multi-tenant app → their Entra admin assigns **Admin** →
 that Admin opens the app → `GET /tenant` shows "Onboard" if no record + `tid` allow-listed →
@@ -108,8 +119,15 @@ Entra) **and** the **allow-list** (controlled by *us*). The allow-list gives con
 
 | Endpoint | Guard | Behavior |
 |---|---|---|
-| `GET /tenant` | authenticated + Admin (tolerates no record) | the current tenant's record, or `{onboarded:false, can_onboard: tid∈allowlist}` |
+| `GET /tenant` | **`require_role("Admin")` alone** — NOT `require_user` | the current tenant's record, or `{onboarded:false, can_onboard: tid∈allowlist}` |
 | `POST /tenant/onboard` | `onboarding_guard` (Admin + allow-list, no resolution) | create the record (idempotent) |
+
+> **Why `GET /tenant` must NOT use `require_user`:** in `shared` mode A's `require_user` calls
+> `resolve_tenant`, which **403s when there's no record** — exactly the pre-onboarding state
+> `GET /tenant` must report. `require_role("Admin")` validates the token + checks the `roles` claim
+> but does **not** resolve the tenant, so it tolerates no record. It computes `can_onboard = tid ∈
+> allow-list` in the body **without** 403-ing (so the UI can show the onboard banner). The
+> config/connection rows below DO use `require_user` because they require an onboarded tenant.
 | `PUT /tenant/config` | `require_user` + `require_role("Admin")` | update `data_plane` (Foundry endpoint/model, KB) |
 | `GET /tenant/connections` | `require_user` + Admin | list the tenant's connections |
 | `POST /tenant/connections` | `require_user` + Admin | add (kind, label, `foundry_connection_id`/`keyvault_ref`, min-roles) |
