@@ -149,16 +149,16 @@ Update `TableStorageTenantStore` (de)serialization. In `put`, add a `connections
 Add a module-level helper to rebuild a record from an entity (used by both `get` and `list`, DRY):
 
 ```python
-def _record_from_entity(e) -> TenantRecord:
+def _record_from_entity(e, tid: str | None = None) -> TenantRecord:
     conns = tuple(Connection(**c) for c in json.loads(e.get("connections") or "[]"))
     return TenantRecord(
-        tid=e["PartitionKey"], name=e["name"], tier=e["tier"], status=e["status"],
+        tid=tid or e["PartitionKey"], name=e["name"], tier=e["tier"], status=e["status"],
         data_plane=TenantConfig(**json.loads(e["data_plane"])),
         connections=conns,
     )
 ```
 
-and use it in `get` (it gets `tid` from `partition_key`, so set `e["PartitionKey"]=tid` or read it from the entity — `get_entity` returns the entity with PartitionKey) and `list`. Replace the inline `TenantRecord(...)` constructions in `get`/`list` with `_record_from_entity(e)`. (`get` already has `e`; it has `PartitionKey`.)
+Replace the inline `TenantRecord(...)` in both methods: in `get` call **`_record_from_entity(e, tid)`** (pass the `tid` param the method already has — don't rely on the entity echoing `PartitionKey`); in `list` call `_record_from_entity(e)` (it reads `e["PartitionKey"]`, which `list_entities` returns).
 
 > `asdict` on a `Connection` is clean (all scalar fields). `e.get("connections") or "[]"` keeps **backward compatibility** with A-era entities that have no `connections` property.
 
@@ -418,12 +418,10 @@ from fastapi import APIRouter, Depends, HTTPException, Security
 from fastapi_azure_auth.user import User
 from pydantic import BaseModel
 
-from app.core.auth import (
-    _current_user, azure_scheme, current_tenant_id, current_user, require_role, require_user,
-)
+from app.core.auth import _current_user, azure_scheme, require_role, require_user
 from app.core.onboarding import onboarding_guard
 from app.core.settings import settings
-from app.core.tenant import TenantConfig
+from app.core.tenant import TenantConfig, current_tenant_id   # current_tenant_id lives in tenant, NOT auth
 from app.core.tenant_store import (
     Connection, TenantRecord, validate_kind, with_connection, without_connection,
 )
@@ -618,19 +616,28 @@ git commit -m "test(tenant): tenant-scoped connection ops never touch another te
 ### Task 6: Connections admin page + nav
 
 **Files:**
+- Create: `apps/frontend/app/api/tenant/[...path]/route.ts` (the **backend proxy** — without it every `/api/tenant/*` fetch 404s)
 - Create: `apps/frontend/app/admin/connections/page.tsx`, `apps/frontend/components/admin/Connections.tsx`
 - Modify: `apps/frontend/components/shell/AppShell.tsx`
 
 - [ ] **Step 1: Read the pattern to mirror**
 
-Read `apps/frontend/app/admin/users/page.tsx` and `apps/frontend/components/admin/AdminUsers.tsx` — copy their shape: the page is a thin `isAdmin`-gated wrapper; the component does the MSAL-token fetch against the backend. Mirror the **exact fetch-with-token helper** AdminUsers uses (do not invent a new one).
+Read `apps/frontend/app/admin/users/page.tsx`, `apps/frontend/components/admin/AdminUsers.tsx`, AND `apps/frontend/app/api/admin/[...path]/route.ts` — copy their shape: the page is a thin `isAdmin`-gated wrapper; the component does the MSAL-token fetch; the **route handler proxies** to the FastAPI backend (the browser never hits the backend directly). Mirror the **exact fetch-with-token helper** AdminUsers uses (do not invent a new one).
+
+- [ ] **Step 1b: Create the `/api/tenant` proxy** — `apps/frontend/app/api/tenant/[...path]/route.ts`: clone `app/api/admin/[...path]/route.ts` verbatim, change `${BACKEND}/admin/${...}` → `${BACKEND}/tenant/${...}`, and **add a `PUT` export** (the admin proxy only exports GET/POST/DELETE, but `/tenant/config` is a PUT). The shared `proxy()` already forwards the body for non-GET/DELETE, so PUT works once the export exists:
+
+```ts
+export async function PUT(req: NextRequest, ctx: Ctx) {
+  return proxy(req, (await ctx.params).path);
+}
+```
 
 - [ ] **Step 2: `app/admin/connections/page.tsx`** — clone `admin/users/page.tsx`, swapping `AdminUsers` → `Connections` and the copy ("manage connections"). Same `useMyRoles`/`isAdmin` gate + `AppShell`.
 
 - [ ] **Step 3: `components/admin/Connections.tsx`** — three zones (mirror the spec §4 sketch):
   1. **Onboarding banner** — `GET /tenant`; if `!onboarded && can_onboard` → a button calling `POST /tenant/onboard`, then refetch.
   2. **Data-plane form** — fields foundry endpoint/model/KB → `PUT /tenant/config`.
-  3. **Connections table** — `GET /tenant/connections`; rows with kind/label/ref/min-roles/enabled + delete (`DELETE /tenant/connections/{id}`); an "Add" form (`POST /tenant/connections`) with `kind` as a dropdown of the registry ids (`github`/`azdo`/`azure`/`entra`/`learn`/`m365`) + `foundry_connection_id`/`keyvault_ref` inputs. **NO secret field.**
+  3. **Connections table** — `GET /tenant/connections`; rows with kind/label/ref/min-roles/enabled + delete (`DELETE /tenant/connections/{id}`); an "Add" form (`POST /tenant/connections`) with `kind` as a dropdown of the registry ids (`github`/`azdo`/`azure`/`entra`/`learn`/`m365`) + `foundry_connection_id`/`keyvault_ref` inputs. **NO secret field.** **Edit = re-POST with the same `id`** (the backend `with_connection` upserts by id — there is no connections-PUT), so the edit button just repopulates the Add form.
   Reuse the AdminUsers fetch/error/loading patterns verbatim.
 
 - [ ] **Step 4: Nav entry** — in `apps/frontend/components/shell/AppShell.tsx`, add `{ href: "/admin/connections", label: "Connections", icon: "🔌" }` to the Admin-only workspace nav (the same `isAdmin(roles)` branch that adds `ADMIN_NAV`).
