@@ -57,6 +57,12 @@ class McpServer:
 The registry is the single source that feeds **both** the internal `MCPStreamableHTTPTool`
 calls and the hosted `get_mcp_tool` / toolbox config — same data, two surfaces.
 
+`read_tools` / `write_tools` are **hand-curated** (a tool name per server's documented MCP
+tools) — we *don't* trust the server's self-reported tool list to decide what's a write, since
+that decision is governance. **Fail-closed default:** a tool that appears on *neither* list is
+treated as write (needs `min_role_write` + approval), so an unclassified new tool can't slip
+through as an unguarded read.
+
 ### The six servers
 
 | id | auth | OBO scope (local) | read / write | tenant status |
@@ -68,6 +74,11 @@ calls and the hosted `get_mcp_tool` / toolbox config — same data, two surfaces
 | **github** | github_pat / oauth | (the user's GitHub token) | repos, issues / **create issue** | ✅ |
 | **m365** | oauth-pt | Graph (Agent 365 servers) | mail/files/etc. | ⚠️ needs M365 → `enabled=False` |
 
+> **"tenant status" ≠ the `enabled` field.** Only **m365** sets `enabled=False` in the registry
+> (no M365 in the tenant). For azure/entra/azdo the ✅-notes are **runtime prerequisites**
+> (`azd up`, admin consent) — those servers stay `enabled=True`; if their prerequisite isn't met
+> the tool just fails-closed at call time, it is not toggled off in the registry.
+
 ## The `platform` (ops) domain
 
 A new domain entry in `apps/frontend/lib/domains.ts` + `app/agents/platform.py` — a
@@ -75,10 +86,36 @@ A new domain entry in `apps/frontend/lib/domains.ts` + `app/agents/platform.py` 
 tools. Registered at `/d/platform`. Builds its tool list from the registry (filtered to the
 caller's role; see Governance).
 
+### Frontend wiring (it is NOT just a `grounded` entry)
+
+The shipped `DomainKind` union is `"workflow" | "grounded"`, and the CopilotKit route
+(`app/api/copilotkit/[[...slug]]/route.ts`) auto-registers an `HttpAgent` **only** for
+`kind === "grounded"` — those are plain request→response Q&A with no interrupts. The
+`helpdesk` (`workflow`) domain is hand-wired separately because its HITL interrupts need the
+**resume-format bridge** (the route translates the AG-UI `resume` *array* into the
+agent-framework `{interrupts:[…]}` *dict*).
+
+`platform` reuses that **same HITL approval card** on write tools (§Governance), so it has
+interrupts too — it is neither a plain `grounded` agent nor a copy of helpdesk's bespoke
+single instance. Therefore:
+
+1. **Extend the union** → `DomainKind = "workflow" | "grounded" | "tool"`; `platform.kind = "tool"`.
+2. **Generalize the route** so any **interrupt-bearing** domain (`kind !== "grounded"`) is
+   registered from the registry **with the resume bridge** — extract the `helpdesk` fetch
+   transform into a shared `withResumeBridge(url)` factory and build the `tool`/`workflow`
+   agents from `DOMAINS` the same way `grounded` ones are built today (keeping helpdesk's
+   hosted twin as its one bespoke extra). After this, adding `platform` really is "one entry
+   in `domains.ts` + its backend agent", and the claim holds for future tool domains too.
+
 ## Authentication (local vs hosted differ — per Microsoft)
 
 - **Internal (our backend, `MCPStreamableHTTPTool`):** OBO — `OnBehalfOfCredential.get_token(obo_scope)` → `headers={"Authorization": f"Bearer {obo}"}`. Reuses the OBO machinery we already have (`app/core/auth.py`). The MCP server sees the **user's identity**, trimmed to their permissions.
 - **Hosted (Foundry):** **OAuth identity passthrough** (not raw OBO header), the Microsoft-recommended per-user mechanism — Agent Service issues a per-user **consent link** (`oauth_consent_request`) and stores the user's credentials. Configured via a **`project_connection_id`** (the connection holds the OAuth app/credentials), **not** a header.
+
+**Which path is active** is the *same* live-vs-hosted switch the project already has (the
+"Hosted agent" toggle → backend `/helpdesk` vs `/helpdesk-hosted`): the internal agent uses the
+OBO-header path, the deployed Foundry agent uses passthrough. The registry doesn't choose — the
+deployment target does.
 
 ### Hard constraints found in research (must respect)
 
@@ -91,9 +128,20 @@ caller's role; see Governance).
 - **Native `approval_mode`** drives per-tool approval from the registry: `read_tools` →
   `never_require`; `write_tools` → `always_require` (so deploy / create-issue / Entra-change
   pause for approval).
-- **Our `require_role`** (the RBAC we shipped) gates **who** reaches the platform agent + the
-  write tools: read tools need `Reader`+, write tools need `Author`/`Admin`. Server-side,
-  fail-closed — complements the framework's approval (which is about *this call*, not *who*).
+- **Our RBAC** gates **who** reaches the platform agent + the write tools — but at **two
+  different seams**, because `require_role(*roles)` is a **FastAPI dependency** (it gates the
+  whole `/d/platform` HTTP endpoint), while per-server, read-vs-write tool gating happens
+  **inside** the agent (one endpoint, many tools of mixed `min_role`). So:
+  - **Endpoint:** `require_role("Reader", "Author", "Approver", "Admin")` as a route dependency
+    — you must hold *some* role to use the platform agent at all (fail-closed).
+  - **Tool-build time:** when assembling the agent's tools, **filter** each server's
+    `read_tools` by `has_role(server.min_role)` and its `write_tools` by
+    `has_role(server.min_role_write)` (using `current_roles()` from the request context) — a
+    caller never even sees tools above their role.
+  - **Write-tool execution:** re-check `has_role(server.min_role_write)` before the call (don't
+    rely on tool-list filtering alone), then the native approval + HITL card.
+  This complements the framework's `approval_mode` (which is about *this call*, not *who*).
+  `require_role` alone **cannot** do per-tool gating — name `has_role`/`current_roles` for that.
 
 > ⚠️ **Known bug (agent-framework #3199):** MCP tools with `always_require` approval **don't
 > execute over AG-UI** — and our frontend is AG-UI. **Mitigation:** on the internal path,
@@ -162,8 +210,9 @@ sequenceDiagram
 3. The frontend `/d/platform` entry + the EvidencePanel reuse.
 4. **OBO** servers (azure/entra/azdo) — needs `azd up` + admin consent + the OAuth app reg.
 5. **GitHub MCP** (GitHub PAT/OAuth path).
-6. **Hosted mirror** — `get_mcp_tool`/toolbox + `project_connection_id` OAuth passthrough,
-   when hosted agents are deployed.
+6. **Hosted mirror** — `get_mcp_tool`/toolbox + `project_connection_id` OAuth passthrough.
+   **Blocked on** the custom-OAuth app registration (open question #4) — not just on hosted
+   agents being deployed; design that app reg first.
 7. **M365 MCP** — deferred until M365 is enabled in the tenant (the one external dependency).
 
 ## Open questions / constraints
