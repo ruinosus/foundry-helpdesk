@@ -55,10 +55,10 @@ isolation boundary is the customer's **Foundry project**.
 - **Runtime, Microsoft-audience (Foundry, ADO):** **OBO** — we exchange the user's token and act
   *as the user*, no extra step (they already signed in with Microsoft). This is today's
   `app/core/auth.py`, made multi-tenant.
-- **Runtime, third-party (GitHub):** **OAuth identity passthrough** — per-user consent; the
-  credential is held by Agent Service / referenced by the connection, never in plaintext on our
-  side. (Microsoft blocks passing a Microsoft-audience token to a third-party endpoint, so this
-  path *must* use the service's own OAuth.)
+- **Runtime, third-party (GitHub):** **OAuth identity passthrough** — per-user consent. **The
+  third-party token is held by the customer's Foundry Agent Service; the control-plane store
+  holds only a connection reference.** (Microsoft blocks passing a Microsoft-audience token to a
+  third-party endpoint, so this path *must* use the service's own OAuth.)
 - **Secrets at rest:** the **customer's Key Vault / CMK**, referenced by `secret_ref`, resolved
   at runtime.
 
@@ -114,7 +114,13 @@ request context, enforced at a **single tenant-scoping choke point**.
 1. **A — Multi-tenant foundation** *(the spine)*. The `TenantConfigProvider` + `DEPLOYMENT_MODE`,
    multi-tenant Entra, `tid` resolution, tenant-scoped store + `memory_scope`. **De-risk first:**
    ship the provider with the `SingleTenant` impl and route all `settings` access through it with
-   **zero behavior change** (existing eval tests stay green) *before* adding `MultiTenant`.
+   **zero behavior change** (existing eval tests stay green) *before* adding `MultiTenant`. Two
+   guards A must include: **(i)** `memory_scope` — `SingleTenant` keeps the existing **un-prefixed**
+   `user.oid` scope; only `MultiTenant` prefixes by `tid` (memory keys are *persisted state*, so a
+   silent prefix change in self-hosted would orphan existing memories — the "zero behavior change"
+   guarantee explicitly covers persisted memory, not just config reads). **(ii)** the
+   **allowed-tenant decision** must be at least stubbed (e.g. an allow-list, hardcoded for now) so
+   `tid`/`iss` validation has a defined **deny path** from day one rather than waiting on open Q #4.
 2. **B — Connection store + UI** (depends on A). The store schema + the "Connections" page where a
    tenant admin plugs Foundry/KB and connects GitHub/ADO via OAuth. (This is the
    "connection in the web app itself" the product needs.)
@@ -122,6 +128,11 @@ request context, enforced at a **single tenant-scoping choke point**.
    `secret_ref` resolution (Key Vault / Foundry connection).
 4. **D — Stamps / packaging** (parallel to B/C). The Managed Application package (dedicated) +
    Lighthouse onboarding (shared data-plane). The deployment-mode seam from A makes this config.
+
+> **Convergence:** **dedicated / self-hosted** end-to-end needs only **A→B→C**. **Shared-mode**
+> end-to-end needs **C ∩ D** — the multi-tenant OBO in C brokers across a *Lighthouse-delegated*
+> subscription, which D provisions. So C and D are independent to build but must converge before
+> the shared path is testable end-to-end.
 
 **Error handling / risks (everything fails closed):**
 

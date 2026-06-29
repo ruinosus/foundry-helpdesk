@@ -17,9 +17,9 @@ never customer data.** Secrets are handled by reference and resolved at runtime:
 
 - **Microsoft-audience downstream (Foundry, ADO):** no stored secret — **OBO** mints a per-user
   token at call time ([ADR-003](./ADR-003-multitenant-identity-obo.md)).
-- **Third-party (GitHub):** **OAuth identity passthrough** — Agent Service stores the user's
-  credential per user and uses it only within the agent↔server context; we hold only a
-  connection reference.
+- **Third-party (GitHub):** **OAuth identity passthrough** — the third-party token is held by
+  the customer's Foundry Agent Service; the control-plane store holds only a connection
+  reference. (Canonical wording, reused verbatim in the spec §2 and Fig 2.)
 - **Secrets at rest (when unavoidable):** in the **customer's Key Vault**, optionally with
   **customer-managed keys (CMK)** cross-tenant; a `Connection.secret_ref` points at the Key
   Vault URI / Foundry connection id — never the secret value.

@@ -18,7 +18,11 @@ SaaS.
   returns the **current tenant's** config (data-plane pointers + enabled connections + enabled
   domains). See [ADR-007](./ADR-007-coexistence-deployment-mode.md) for the provider implementations.
 - **Namespace memory and any tenant-owned state by tenant**, e.g. `memory_scope()` becomes
-  `f"{tid}:{user.oid}"`.
+  `f"{tid}:{user.oid}"` **in the `MultiTenant` impl only**. The `SingleTenant` impl keeps the
+  existing **un-prefixed** `user.oid` scope — memory keys are *persisted state*, so prefixing them
+  in the self-hosted path would orphan existing memories. The "zero behavior change" guarantee
+  ([ADR-007](./ADR-007-coexistence-deployment-mode.md)) therefore covers persisted memory, not
+  just config reads.
 - Enforce tenant scoping at a **single choke point** (the provider / store access layer), not
   sprinkled through call sites, so it is auditable.
 - The static MCP server registry becomes the **catalog/shape**; the *enabled* connections and
