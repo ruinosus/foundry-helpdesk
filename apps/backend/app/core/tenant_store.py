@@ -6,10 +6,11 @@ Cosmos/Postgres later = another class implementing TenantStore.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, replace
 from typing import Protocol
 
 from app.core.tenant import TenantConfig
+from app.agents.mcp.registry import SERVERS
 
 
 @dataclass(frozen=True)
@@ -33,6 +34,22 @@ class TenantRecord:
     status: str          # active | suspended
     data_plane: TenantConfig
     connections: tuple[Connection, ...] = ()   # NEW (keep after data_plane)
+
+
+def validate_kind(kind: str) -> bool:
+    """True if `kind` is a registry server id (the catalog is the source of truth)."""
+    return any(s.id == kind for s in SERVERS)
+
+
+def with_connection(rec: TenantRecord, conn: Connection) -> TenantRecord:
+    """Return a new record with `conn` added/replaced (by id) — upsert."""
+    others = tuple(c for c in rec.connections if c.id != conn.id)
+    return replace(rec, connections=others + (conn,))
+
+
+def without_connection(rec: TenantRecord, conn_id: str) -> TenantRecord:
+    """Return a new record with the connection `conn_id` removed."""
+    return replace(rec, connections=tuple(c for c in rec.connections if c.id != conn_id))
 
 
 class TenantStore(Protocol):
