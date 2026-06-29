@@ -129,8 +129,13 @@ def credential_for_request() -> TokenCredential:
 
 
 def memory_scope() -> str:
-    """Per-user memory namespace — the user's object id (isolation = poisoning defense)."""
+    """Per-user memory namespace, tenant-prefixed in multi-tenant mode.
+
+    SingleTenant keeps the bare user.oid (memory keys are persisted — prefixing would orphan
+    existing memories). Only MultiTenant prefixes by tid.
+    """
+    from app.core.tenant import current_tenant_id  # local import avoids a cycle
     user = current_user()
-    if user is not None and user.oid:
-        return user.oid
-    return "dev-local"
+    base = user.oid if (user is not None and user.oid) else "dev-local"
+    tid = current_tenant_id()
+    return f"{tid}:{base}" if tid else base
