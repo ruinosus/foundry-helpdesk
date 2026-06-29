@@ -122,8 +122,13 @@ request context, enforced at a **single tenant-scoping choke point**.
    **allowed-tenant decision** must be at least stubbed (e.g. an allow-list, hardcoded for now) so
    `tid`/`iss` validation has a defined **deny path** from day one rather than waiting on open Q #4.
 2. **B — Connection store + UI** (depends on A). The store schema + the "Connections" page where a
-   tenant admin plugs Foundry/KB and connects GitHub/ADO via OAuth. (This is the
-   "connection in the web app itself" the product needs.)
+   tenant admin plugs Foundry/KB and registers connections. (This is the "connection in the web
+   app itself" the product needs.) **Refined by [ADR-008](../../adr/ADR-008-foundry-connections-app-configuration.md):**
+   connections are *references* to **Foundry connections / Key Vault** (not a custom credential
+   store), config storage is the `TenantStore` interface (Table Storage now, **Azure App
+   Configuration** the idiomatic production backend), and the OAuth flow itself is **not** built in
+   B — Foundry connections / C broker credentials. See the
+   [sub-project B design](../specs/2026-06-29-subproject-b-connections-design.md).
 3. **C — Credential brokering** (depends on B). Multi-tenant OBO + OAuth passthrough +
    `secret_ref` resolution (Key Vault / Foundry connection).
 4. **D — Stamps / packaging** (parallel to B/C). The Managed Application package (dedicated) +
