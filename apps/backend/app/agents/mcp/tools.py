@@ -6,11 +6,15 @@ Internal path only (MCPStreamableHTTPTool). Per server, filter tools to the call
   - approval_mode = "never_require" — native MCP approval does NOT execute over AG-UI
     (agent-framework #3199), so write approval is handled by OUR HITL card in the workflow,
     not here. We still gate WRITE visibility by role above; a Reader simply never sees a write.
-  - header_provider = a callable that injects the per-user OBO bearer for auth="obo" servers
-    (lazy: evaluated at call time with the request's credential). Public servers get none.
+  - the right auth per server:
+      * public   → no header.
+      * obo      → header_provider minting a per-user OBO bearer (lazy, at call time).
+      * github_pat → header_provider with the shared GitHub PAT (GitHub's own OAuth, NOT
+        Entra OBO — GitHub rejects Microsoft-audience tokens; see registry.py).
 
-GitHub (auth="github_pat") and hosted OAuth-passthrough are handled in later chunks; this
-builder covers public + obo. Unknown auth → server skipped (fail-closed).
+Servers whose required config is missing are SKIPPED (fail-closed): azdo needs an org,
+github needs a PAT. The URL may be a template ({org}) resolved here from settings. Hosted
+OAuth-passthrough is the hosted path (later chunk). Unknown auth → skipped.
 """
 
 from __future__ import annotations
@@ -30,21 +34,49 @@ def _obo_header_provider(scope: str):
     return provider
 
 
+def _static_header_provider(value: str):
+    """A header_provider that injects a fixed Authorization bearer (e.g. a GitHub PAT)."""
+    def provider(_existing: dict) -> dict:
+        return {"Authorization": f"Bearer {value}"}
+    return provider
+
+
+def _resolve_url(server: McpServer) -> str | None:
+    """Fill any URL template from settings; None if the needed config is missing → skip."""
+    if server.id == "azdo":
+        org = settings.mcp_ado_organization
+        return server.url.format(org=org) if org else None
+    if server.id == "azure":
+        return settings.mcp_azure_url or None  # registry url is empty; only if self-hosted
+    return server.url or None
+
+
 def _build_one(server: McpServer, roles: set[str]) -> MCPStreamableHTTPTool | None:
     reads, writes = visible_tools(server, roles)
     allowed = reads + writes
     if not allowed:
         return None  # caller sees no tools on this server
+
+    url = _resolve_url(server)
+    if not url:
+        return None  # required config missing (e.g. azdo org) → fail-closed
+
     kwargs: dict = {
         "name": f"mcp_{server.id}",
-        "url": server.url,
+        "url": url,
         "allowed_tools": allowed,
         "approval_mode": "never_require",  # see module docstring (HITL handles writes)
     }
-    if server.auth == "obo" and server.obo_scope:
+    if server.auth == "public":
+        pass  # no auth header
+    elif server.auth == "obo" and server.obo_scope:
         kwargs["header_provider"] = _obo_header_provider(server.obo_scope)
-    elif server.auth != "public":
-        return None  # github_pat / oauth_passthrough handled elsewhere
+    elif server.auth == "github_pat":
+        if not settings.mcp_github_pat:
+            return None  # no PAT configured → skip
+        kwargs["header_provider"] = _static_header_provider(settings.mcp_github_pat)
+    else:
+        return None  # oauth_passthrough (hosted) / unknown → skip on the internal path
     return MCPStreamableHTTPTool(**kwargs)
 
 

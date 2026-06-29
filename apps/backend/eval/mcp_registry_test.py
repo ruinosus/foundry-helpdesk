@@ -35,8 +35,14 @@ def main() -> int:
           get_server("learn").auth == "public"
           and not get_server("learn").write_tools
           and get_server("learn").enabled)
-    check("only m365 is disabled",
-          {s.id for s in SERVERS if not s.enabled} == {"m365"})
+    # azure/entra have no remote endpoint, m365 is Frontier-gated → all disabled. learn/azdo/
+    # github have real endpoints (azdo/github gated by config in the builder, not the registry).
+    check("disabled set = azure, entra, m365",
+          {s.id for s in SERVERS if not s.enabled} == {"azure", "entra", "m365"})
+    check("github auth is github_pat (NOT obo)",
+          get_server("github").auth == "github_pat")
+    check("azdo url is the real templated remote endpoint",
+          get_server("azdo").url == "https://mcp.dev.azure.com/{org}")
 
     azure = get_server("azure")
     # classify_tool: read/write/unknown, fail-closed

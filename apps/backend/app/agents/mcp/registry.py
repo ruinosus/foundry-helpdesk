@@ -47,32 +47,46 @@ SERVERS: tuple[McpServer, ...] = (
         auth="public",
         read_tools=("microsoft_docs_search", "microsoft_docs_fetch"),
     ),
+    # Azure MCP has NO Microsoft-managed remote endpoint — it ships as a LOCAL stdio server
+    # (`npx @azure/mcp`) or must be self-hosted on Azure Container Apps to get an HTTPS URL.
+    # So it does NOT fit the MCPStreamableHTTPTool remote+OBO model out of the box: disabled
+    # until self-hosted (then set mcp_azure_url) or wired via MCPStdioTool with ambient creds.
+    # Verified: github.com/mcp/com.microsoft/azure.
     McpServer(
         id="azure",
         label="Azure",
-        url="https://<azure-mcp-endpoint>",  # TODO: confirm the Azure MCP remote URL when wiring
+        url="",  # self-host on Container Apps → set via settings.mcp_azure_url; else stdio (local)
         auth="obo",
         obo_scope="https://management.azure.com/.default",
         read_tools=("azure_resource_list", "azure_cost_query", "azure_diagnostics"),
         write_tools=("azure_resource_deploy",),
+        enabled=False,  # no managed remote endpoint — see comment
     ),
+    # No confirmed FIRST-PARTY hosted-remote Entra MCP endpoint; the Entra identity surface in
+    # Foundry is via the Graph / Agent 365 MCP servers (Frontier-tenant gated). Disabled until a
+    # real remote endpoint exists (then set the url). Verified: Foundry MCP-auth + Agent 365 docs.
     McpServer(
         id="entra",
         label="Microsoft Entra",
-        url="https://<entra-mcp-endpoint>",  # TODO: confirm when wiring
+        url="",  # no first-party remote endpoint yet
         auth="obo",
         obo_scope="https://graph.microsoft.com/.default",
         read_tools=("entra_directory_query",),
         write_tools=("entra_directory_change",),
+        enabled=False,  # no remote endpoint — see comment
     ),
+    # Azure DevOps Remote MCP Server (public preview) — REAL hosted endpoint, streamable HTTP,
+    # Entra auth (so OBO works). URL is per-organization; {org} is filled from settings at build
+    # time. Verified: learn.microsoft.com/azure/devops/mcp-server/remote-mcp-server.
     McpServer(
         id="azdo",
         label="Azure DevOps",
-        url="https://<azdo-mcp-endpoint>",  # TODO: confirm when wiring
+        url="https://mcp.dev.azure.com/{org}",  # {org} → settings.mcp_ado_organization
         auth="obo",
-        obo_scope="499b84ac-1321-427f-aa17-267ca6975798/.default",  # Azure DevOps resource — TODO: confirm scope when wiring
+        obo_scope="499b84ac-1321-427f-aa17-267ca6975798/.default",  # Azure DevOps resource (stable)
         read_tools=("azdo_workitem_query", "azdo_pipeline_list"),
         write_tools=("azdo_workitem_create",),
+        # enabled (real endpoint); the builder skips it until settings.mcp_ado_organization is set.
     ),
     # GitHub auth is NOT Entra OBO. GitHub's MCP advertises
     # authorization_servers=["https://github.com/login/oauth"] — it validates GitHub-issued
