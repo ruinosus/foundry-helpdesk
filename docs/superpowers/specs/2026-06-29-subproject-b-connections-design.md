@@ -121,17 +121,17 @@ Entra) **and** the **allow-list** (controlled by *us*). The allow-list gives con
 |---|---|---|
 | `GET /tenant` | **`require_role("Admin")` alone** — NOT `require_user` | the current tenant's record, or `{onboarded:false, can_onboard: tid∈allowlist}` |
 | `POST /tenant/onboard` | `onboarding_guard` (Admin + allow-list, no resolution) | create the record (idempotent) |
+| `PUT /tenant/config` | `require_user` + `require_role("Admin")` | update `data_plane` (Foundry endpoint/model, KB) |
+| `GET /tenant/connections` | `require_user` + Admin | list the tenant's connections |
+| `POST /tenant/connections` | `require_user` + Admin | add (kind, label, `foundry_connection_id`/`keyvault_ref`, min-roles) |
+| `PUT /tenant/connections/{id}` · `DELETE …/{id}` | `require_user` + Admin | edit / remove |
 
 > **Why `GET /tenant` must NOT use `require_user`:** in `shared` mode A's `require_user` calls
 > `resolve_tenant`, which **403s when there's no record** — exactly the pre-onboarding state
 > `GET /tenant` must report. `require_role("Admin")` validates the token + checks the `roles` claim
 > but does **not** resolve the tenant, so it tolerates no record. It computes `can_onboard = tid ∈
 > allow-list` in the body **without** 403-ing (so the UI can show the onboard banner). The
-> config/connection rows below DO use `require_user` because they require an onboarded tenant.
-| `PUT /tenant/config` | `require_user` + `require_role("Admin")` | update `data_plane` (Foundry endpoint/model, KB) |
-| `GET /tenant/connections` | `require_user` + Admin | list the tenant's connections |
-| `POST /tenant/connections` | `require_user` + Admin | add (kind, label, `foundry_connection_id`/`keyvault_ref`, min-roles) |
-| `PUT /tenant/connections/{id}` · `DELETE …/{id}` | `require_user` + Admin | edit / remove |
+> config/connection rows DO use `require_user` because they require an onboarded tenant.
 
 **Tenant-scoping (non-negotiable):** config/connection endpoints operate **only** on the resolved
 tenant (`current_tenant_id()` from `require_user`) — `store.get(tid)` → modify → `store.put(record)`.
@@ -191,4 +191,9 @@ credential and runs no OAuth.
 
 1. **`Connection.id` generation** — slug from label vs uuid; uniqueness within the tenant.
 2. **Concurrent edits** — last-write-wins for v1; add an `etag`/If-Match if admins collide.
-3. **Validating `foundry_connection_id`** — does B verify the referenced Foundry connection exists (a Foundry SDK call), or accept the string and let C fail closed at runtime? (Lean: accept + C validates, to keep B infra-light.)
+3. **Validating `foundry_connection_id`** — **Decision: accept the string; C validates at runtime**
+   (keeps B infra-light, no Foundry SDK call in the management plane). To avoid a silent runtime
+   break with no Admin signal, B SHOULD surface a non-blocking "unverified" hint in the UI (the
+   reference is saved but not yet confirmed) and rely on C's fail-closed behavior + a clear runtime
+   error surfaced back to the Connections page. (Live verification via the Foundry SDK is a
+   follow-on if the unverified-hint proves insufficient.)
