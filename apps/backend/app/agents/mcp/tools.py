@@ -23,7 +23,8 @@ from agent_framework import MCPStreamableHTTPTool
 
 from app.agents.mcp.registry import McpServer, enabled_servers, visible_tools
 from app.core.auth import credential_for_request, current_roles
-from app.core.settings import settings
+from app.core.settings import settings  # platform-global (auth_enabled)
+from app.core.tenant import tenant_config  # per-tenant (mcp ado/github/azure)
 
 
 def _obo_header_provider(scope: str):
@@ -43,11 +44,12 @@ def _static_header_provider(value: str):
 
 def _resolve_url(server: McpServer) -> str | None:
     """Fill any URL template from settings; None if the needed config is missing → skip."""
+    cfg = tenant_config()
     if server.id == "azdo":
-        org = settings.mcp_ado_organization
+        org = cfg.mcp_ado_organization
         return server.url.format(org=org) if org else None
     if server.id == "azure":
-        return settings.mcp_azure_url or None  # registry url is empty; only if self-hosted
+        return cfg.mcp_azure_url or None  # registry url is empty; only if self-hosted
     return server.url or None
 
 
@@ -72,9 +74,10 @@ def _build_one(server: McpServer, roles: set[str]) -> MCPStreamableHTTPTool | No
     elif server.auth == "obo" and server.obo_scope:
         kwargs["header_provider"] = _obo_header_provider(server.obo_scope)
     elif server.auth == "github_pat":
-        if not settings.mcp_github_pat:
+        pat = tenant_config().mcp_github_pat
+        if not pat:
             return None  # no PAT configured → skip
-        kwargs["header_provider"] = _static_header_provider(settings.mcp_github_pat)
+        kwargs["header_provider"] = _static_header_provider(pat)
     else:
         return None  # oauth_passthrough (hosted) / unknown → skip on the internal path
     return MCPStreamableHTTPTool(**kwargs)

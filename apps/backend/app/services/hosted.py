@@ -13,7 +13,7 @@ import inspect
 import uuid
 from collections.abc import AsyncGenerator
 
-from app.core.settings import settings
+from app.core.tenant import tenant_config
 
 # Cached async OpenAI client (+ its project/credential) bound to the hosted agent.
 _state: dict = {"client": None, "project": None, "credential": None}
@@ -26,11 +26,13 @@ async def _client():
 
         credential = DefaultAzureCredential()
         project = AIProjectClient(
-            endpoint=settings.foundry_project_endpoint,
+            endpoint=tenant_config().foundry_project_endpoint,
             credential=credential,
             allow_preview=True,
         )
-        client = project.get_openai_client(agent_name=settings.hosted_agent_name)
+        client = project.get_openai_client(agent_name=tenant_config().hosted_agent_name)
+        # TODO(multitenant): this process-global cache binds to the FIRST tenant that warms it;
+        # bust/scope it per-tenant when the MultiTenant provider lands (else cross-tenant data-plane mismatch).
         _state.update(
             client=await client if inspect.isawaitable(client) else client,
             project=project,

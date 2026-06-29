@@ -17,18 +17,20 @@ from agent_framework.foundry import FoundryChatClient
 from app.agents.mcp.tools import build_mcp_tools
 from app.agents.prompts import PLATFORM_INSTRUCTIONS
 from app.core.auth import credential_for_request
-from app.core.settings import settings
+from app.core.settings import settings  # platform-global (mcp_enabled)
+from app.core.tenant import tenant_config  # per-tenant (foundry endpoint/model)
 
 
 def platform_configured() -> bool:
-    return bool(settings.mcp_enabled and settings.foundry_project_endpoint)
+    return bool(settings.mcp_enabled and tenant_config().foundry_project_endpoint)
 
 
 def build_platform_agent() -> Agent:
     """A tool-driven concierge over the Microsoft first-party MCP servers."""
+    cfg = tenant_config()
     client = FoundryChatClient(
-        project_endpoint=settings.foundry_project_endpoint or None,
-        model=settings.foundry_model,
+        project_endpoint=cfg.foundry_project_endpoint or None,
+        model=cfg.foundry_model,
         credential=credential_for_request(),
     )
     return client.as_agent(
