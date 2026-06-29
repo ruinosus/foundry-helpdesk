@@ -56,7 +56,7 @@ const emptyForm = {
   foundry_connection_id: "",
   keyvault_ref: "",
   min_role_read: "Reader" as string,
-  min_role_write: "Approver" as string,
+  min_role_write: "Author" as string,
   enabled: true,
 };
 
@@ -117,7 +117,7 @@ export function Connections() {
       foundry_connection_id: c.foundry_connection_id || "",
       keyvault_ref: c.keyvault_ref || "",
       min_role_read: c.min_role_read || "Reader",
-      min_role_write: c.min_role_write || "Approver",
+      min_role_write: c.min_role_write || "Author",
       enabled: c.enabled ?? true,
     });
   };
