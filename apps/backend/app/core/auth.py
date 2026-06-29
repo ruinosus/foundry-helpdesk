@@ -43,6 +43,12 @@ _current_user: contextvars.ContextVar[User | None] = contextvars.ContextVar(
     "current_user", default=None
 )
 
+def _iss_callable(tid: str) -> str:
+    """Per-tenant issuer for MultiTenant token validation. Parameter MUST be named `tid`
+    (fastapi_azure_auth introspects the name)."""
+    return f"https://login.microsoftonline.com/{tid}/v2.0"
+
+
 # The bearer scheme validates incoming JWTs against the API app registration.
 # self_hosted/dedicated → SingleTenant (one Entra tenant); shared → MultiTenant.
 azure_scheme = None
@@ -61,10 +67,9 @@ if settings.auth_enabled:
             app_client_id=settings.entra_api_client_id,
             scopes={settings.entra_api_scope: "access_as_user"},
             validate_iss=True,
-            # TODO(iss): verify whether this lib version validates per-tenant iss on its own or
-            # needs an iss_callable(tid)->f"https://login.microsoftonline.com/{tid}/v2.0".
-            # Inspect inspect.signature(MultiTenantAzureAuthorizationCodeBearer.__init__).
-            # Closed when the Chunk 3 E2E iss-mismatch case rejects. Do NOT guess the kwarg now.
+            # Per-tenant issuer validation; fastapi_azure_auth requires iss_callable when
+            # validate_iss=True. The callable's parameter must be named exactly `tid`.
+            iss_callable=_iss_callable,
             allow_guest_users=True,
         )
 
