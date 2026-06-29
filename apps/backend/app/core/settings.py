@@ -17,6 +17,9 @@ class PlatformSettings(BaseSettings):
     deployment_mode: str = "self_hosted"
     tenant_store_table: str = "tenants"
     tenant_store_account_url: str = ""
+    # "table" (default, production) | "memory" (DEV/CI only — ephemeral, lets shared mode boot
+    # offline; never use in production).
+    tenant_store_backend: str = "table"
 
     # --- Phase 3: Entra ID + On-Behalf-Of (per-user identity) ---
     # Backend API app registration (the audience of incoming tokens).
