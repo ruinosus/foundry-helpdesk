@@ -27,7 +27,10 @@ import contextvars
 from azure.core.credentials import TokenCredential
 from azure.identity import DefaultAzureCredential, OnBehalfOfCredential
 from fastapi import Depends, HTTPException, Security, status
-from fastapi_azure_auth import SingleTenantAzureAuthorizationCodeBearer
+from fastapi_azure_auth import (
+    MultiTenantAzureAuthorizationCodeBearer,
+    SingleTenantAzureAuthorizationCodeBearer,
+)
 from fastapi_azure_auth.user import User
 
 from app.core.settings import settings
@@ -41,23 +44,76 @@ _current_user: contextvars.ContextVar[User | None] = contextvars.ContextVar(
 )
 
 # The bearer scheme validates incoming JWTs against the API app registration.
-azure_scheme: SingleTenantAzureAuthorizationCodeBearer | None = None
+# self_hosted/dedicated → SingleTenant (one Entra tenant); shared → MultiTenant.
+azure_scheme = None
 if settings.auth_enabled:
-    azure_scheme = SingleTenantAzureAuthorizationCodeBearer(
-        app_client_id=settings.entra_api_client_id,
-        tenant_id=settings.entra_tenant_id,
-        scopes={settings.entra_api_scope: "access_as_user"},
-        # The dev account is a guest (personal MS account invited to the tenant);
-        # allow guests so it can sign in. Tighten for a production tenant.
-        allow_guest_users=True,
+    if settings.deployment_mode in ("self_hosted", "dedicated"):
+        azure_scheme = SingleTenantAzureAuthorizationCodeBearer(
+            app_client_id=settings.entra_api_client_id,
+            tenant_id=settings.entra_tenant_id,
+            scopes={settings.entra_api_scope: "access_as_user"},
+            # The dev account is a guest (personal MS account invited to the tenant);
+            # allow guests so it can sign in. Tighten for a production tenant.
+            allow_guest_users=True,
+        )
+    else:  # shared
+        azure_scheme = MultiTenantAzureAuthorizationCodeBearer(
+            app_client_id=settings.entra_api_client_id,
+            scopes={settings.entra_api_scope: "access_as_user"},
+            validate_iss=True,
+            # TODO(iss): verify whether this lib version validates per-tenant iss on its own or
+            # needs an iss_callable(tid)->f"https://login.microsoftonline.com/{tid}/v2.0".
+            # Inspect inspect.signature(MultiTenantAzureAuthorizationCodeBearer.__init__).
+            # Closed when the Chunk 3 E2E iss-mismatch case rejects. Do NOT guess the kwarg now.
+            allow_guest_users=True,
+        )
+
+
+def _make_tenant_store():
+    """Build the shared-mode store at boot. Uses the PLATFORM-global control-plane Storage
+    account (settings.tenant_store_account_url) — NOT per-tenant, since no tenant is resolved
+    at boot yet."""
+    from azure.identity import DefaultAzureCredential
+    from app.core.tenant_store import TableStorageTenantStore
+    if not settings.tenant_store_account_url:
+        raise RuntimeError("DEPLOYMENT_MODE=shared requires TENANT_STORE_ACCOUNT_URL")
+    return TableStorageTenantStore(
+        settings.tenant_store_account_url, settings.tenant_store_table, DefaultAzureCredential()
     )
 
 
-if settings.auth_enabled:
+def resolve_tenant(user, store) -> None:
+    """Authorization choke point: onboarded+active tid → set _current_tenant, else 403."""
+    from app.core.tenant import set_current_tenant
+    rec = store.get(getattr(user, "tid", None))
+    if rec is None or rec.status != "active":
+        raise HTTPException(status_code=403, detail="tenant not onboarded")
+    set_current_tenant(rec)
 
-    async def require_user(user: User = Security(azure_scheme)) -> User:  # type: ignore[arg-type]
-        _current_user.set(user)
-        return user
+
+# In shared mode only, switch the active config provider to MultiTenant and build the tenant
+# store once at boot (fail-fast if misconfigured). self_hosted/dedicated and auth-off NEVER
+# touch either — the default SingleTenant provider stays and no store is constructed.
+_tenant_store = None
+if settings.auth_enabled and settings.deployment_mode == "shared":
+    from app.core.tenant import MultiTenantConfigProvider, set_provider
+    set_provider(MultiTenantConfigProvider())
+    _tenant_store = _make_tenant_store()  # fail-fast at boot if misconfigured
+
+
+if settings.auth_enabled:
+    if settings.deployment_mode == "shared":
+
+        async def require_user(user: User = Security(azure_scheme)) -> User:  # type: ignore[arg-type]
+            _current_user.set(user)
+            resolve_tenant(user, _tenant_store)
+            return user
+
+    else:
+
+        async def require_user(user: User = Security(azure_scheme)) -> User:  # type: ignore[arg-type]
+            _current_user.set(user)
+            return user
 
 else:
 
