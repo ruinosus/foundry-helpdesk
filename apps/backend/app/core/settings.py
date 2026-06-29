@@ -26,6 +26,13 @@ class PlatformSettings(BaseSettings):
     # Frontend SPA app registration (surfaced to the frontend env; not used here).
     entra_spa_client_id: str = ""
 
+    # --- MCP integration (platform/ops domain) — PLATFORM-GLOBAL flags only ---
+    # mcp_enabled is a deployment switch; mcp_learn_url is the public Learn endpoint (same for
+    # all tenants). The per-tenant MCP fields (ADO org, GitHub PAT, self-hosted Azure URL) live
+    # in TenantConfig (app.core.tenant), read via tenant_config().
+    mcp_enabled: bool = False
+    mcp_learn_url: str = "https://learn.microsoft.com/api/mcp"
+
     # CORS origin for the local Next.js frontend
     frontend_origin: str = "http://localhost:3000"
 

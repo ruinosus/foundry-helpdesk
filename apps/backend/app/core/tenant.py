@@ -68,6 +68,12 @@ class TenantConfig:
     # --- Phase 6: hosted agent (Foundry Agent Service) ---
     hosted_agent_name: str = "helpdesk-concierge"
 
+    # --- MCP integration: per-tenant fields (each tenant's own ADO org / GitHub PAT / self-
+    # hosted Azure MCP URL). The platform-global mcp_enabled/mcp_learn_url stay in PlatformSettings.
+    mcp_ado_organization: str = ""
+    mcp_github_pat: str = ""
+    mcp_azure_url: str = ""
+
     @property
     def acl_group_map(self) -> dict[str, str]:
         """Group NAME → Entra object-ID. cockpit_acl_group_map, plus the demo trio."""
@@ -113,6 +119,9 @@ class _TenantEnv(BaseSettings):
     cockpit_docbundles_path: str = ""
     foundry_memory_store: str = "helpdesk-memory"
     hosted_agent_name: str = "helpdesk-concierge"
+    mcp_ado_organization: str = ""
+    mcp_github_pat: str = ""
+    mcp_azure_url: str = ""
 
     def as_config(self) -> TenantConfig:
         return TenantConfig(**{k: getattr(self, k) for k in TenantConfig.__dataclass_fields__})
