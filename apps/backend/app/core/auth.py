@@ -78,8 +78,7 @@ def _make_tenant_store():
     """Build the shared-mode store at boot. Uses the PLATFORM-global control-plane Storage
     account (settings.tenant_store_account_url) — NOT per-tenant, since no tenant is resolved
     at boot yet."""
-    from azure.identity import DefaultAzureCredential
-    from app.core.tenant_store import TableStorageTenantStore
+    from app.core.tenant_store import TableStorageTenantStore  # lazy: shared mode only
     if not settings.tenant_store_account_url:
         raise RuntimeError("DEPLOYMENT_MODE=shared requires TENANT_STORE_ACCOUNT_URL")
     return TableStorageTenantStore(
