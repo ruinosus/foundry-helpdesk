@@ -1,0 +1,18 @@
+# Architecture Decision Records
+
+ADRs capture significant architecture decisions: context → decision → consequences, each
+grounded in the Microsoft guidance it follows. Format is lightweight (MADR-style).
+
+## Index
+
+| ADR | Decision |
+|---|---|
+| [ADR-001](./ADR-001-tenancy-deployment-stamps.md) | Tenancy model = **Deployment Stamps** (hybrid: shared + dedicated) |
+| [ADR-002](./ADR-002-dedicated-stamp-managed-app-lighthouse.md) | Dedicated stamp = **Managed Application**; cross-tenant mgmt = **Azure Lighthouse** |
+| [ADR-003](./ADR-003-multitenant-identity-obo.md) | Identity = **multi-tenant Entra app**, tenant from `tid`, **OBO** downstream |
+| [ADR-004](./ADR-004-byo-data-plane-foundry-project.md) | Data plane = **BYO per-tenant**, Foundry **project** as the isolation boundary |
+| [ADR-005](./ADR-005-never-store-secrets.md) | The control plane **never stores customer secrets** (passthrough + CMK refs) |
+| [ADR-006](./ADR-006-tenant-scoped-config.md) | **Tenant-scoped** config — replace the global `settings`; namespace memory by tenant |
+| [ADR-007](./ADR-007-coexistence-deployment-mode.md) | Coexistence via a **deployment-mode** seam (one codebase, three modes) |
+
+ADRs 001–007 belong to the [SaaS target architecture](../superpowers/specs/2026-06-29-saas-target-architecture-design.md) design.
