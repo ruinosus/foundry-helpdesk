@@ -35,10 +35,12 @@ Use the Microsoft-native mechanisms; build neither a secret reader nor a custom 
   via `agent.runAgent({ resume })` — CopilotKit's native interrupt detection doesn't match the
   framework interrupt) is **extended** to carry `ToolApprovalRequestContent`; approval requires the
   **Approver/Admin** role (project rule #5). The AG-UI bug agent-framework #3199 (always_require not
-  executing over AG-UI) is a **verification item** — confirm it's fixed AND that the approval
-  surfaces as the same `request_info`-style CUSTOM event the tap consumes; if not, the fallback is a
-  framework `RequestInfoEvent`-emitting middleware (still not a hand-rolled workflow), and the
-  frontend resume-bridge handling is scoped as real work, not a one-liner.
+  executing over AG-UI) is a **verification item** with **two independent checks**: (a) is #3199
+  fixed in the installed version, so `always_require` actually fires over AG-UI? and (b) does the
+  native approval surface as the same `request_info`-style CUSTOM event the existing tap consumes?
+  If (a) fails → fallback to a framework `RequestInfoEvent`-emitting middleware (still not a
+  hand-rolled workflow). If (b) fails → the frontend resume-bridge handling is scoped as real work
+  (a new event shape + card path), not a one-line extension.
 
 ## Consequences
 
