@@ -59,6 +59,16 @@ class ConnectionBody(BaseModel):
     enabled: bool = True
 
 
+# Per-tenant config fields that are secrets — redacted from API responses (ADR-005/008).
+# (The legacy flat mcp_github_pat predates the connection-reference model; never echo it back.)
+_SECRET_CONFIG_FIELDS = ("mcp_github_pat",)
+
+
+def _redacted(rec: TenantRecord) -> TenantRecord:
+    """A copy with secret-bearing data_plane fields blanked — for responses only."""
+    return replace(rec, data_plane=replace(rec.data_plane, **{f: "" for f in _SECRET_CONFIG_FIELDS}))
+
+
 @router.get("", dependencies=[_admin])
 def get_tenant(user: User = Security(azure_scheme)):  # type: ignore[arg-type]
     """Record if onboarded, else whether the caller MAY onboard. Tolerates no record."""
@@ -66,7 +76,7 @@ def get_tenant(user: User = Security(azure_scheme)):  # type: ignore[arg-type]
     rec = _store().get(getattr(user, "tid", None))
     if rec is None:
         return {"onboarded": False, "can_onboard": getattr(user, "tid", None) in settings.allowed_tids}
-    return {"onboarded": True, "record": rec}
+    return {"onboarded": True, "record": _redacted(rec)}  # never echo secrets
 
 
 @router.post("/onboard")
@@ -89,7 +99,7 @@ def put_config(body: ConfigBody):
 
 @router.get("/connections", dependencies=_user_admin)
 def list_connections():
-    return {"connections": [c for c in _my_record().connections]}
+    return {"connections": list(_my_record().connections)}
 
 
 @router.post("/connections", dependencies=_user_admin)
