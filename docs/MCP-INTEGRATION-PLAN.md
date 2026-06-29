@@ -109,7 +109,7 @@ single instance. Therefore:
 
 ## Authentication (local vs hosted differ — per Microsoft)
 
-- **Internal (our backend, `MCPStreamableHTTPTool`):** OBO — `OnBehalfOfCredential.get_token(obo_scope)` → `headers={"Authorization": f"Bearer {obo}"}`. Reuses the OBO machinery we already have (`app/core/auth.py`). The MCP server sees the **user's identity**, trimmed to their permissions.
+- **Internal (our backend, `MCPStreamableHTTPTool`):** OBO — get the per-request credential via the existing **`credential_for_request()`** (`app/core/auth.py`, which builds the `OnBehalfOfCredential` from request context), then `cred.get_token(obo_scope)` → `headers={"Authorization": f"Bearer {token}"}`. The MCP server sees the **user's identity**, trimmed to their permissions.
 - **Hosted (Foundry):** **OAuth identity passthrough** (not raw OBO header), the Microsoft-recommended per-user mechanism — Agent Service issues a per-user **consent link** (`oauth_consent_request`) and stores the user's credentials. Configured via a **`project_connection_id`** (the connection holds the OAuth app/credentials), **not** a header.
 
 **Which path is active** is the *same* live-vs-hosted switch the project already has (the
