@@ -31,6 +31,8 @@ async def _client():
             allow_preview=True,
         )
         client = project.get_openai_client(agent_name=tenant_config().hosted_agent_name)
+        # TODO(multitenant): this process-global cache binds to the FIRST tenant that warms it;
+        # bust/scope it per-tenant when the MultiTenant provider lands (else cross-tenant data-plane mismatch).
         _state.update(
             client=await client if inspect.isawaitable(client) else client,
             project=project,

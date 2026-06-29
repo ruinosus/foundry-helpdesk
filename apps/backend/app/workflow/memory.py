@@ -20,7 +20,8 @@ MEMORY_CONTEXT_PROMPT = (
 
 
 def memory_enabled() -> bool:
-    return bool(tenant_config().foundry_project_endpoint and tenant_config().foundry_memory_store)
+    cfg = tenant_config()
+    return bool(cfg.foundry_project_endpoint and cfg.foundry_memory_store)
 
 
 def build_memory_provider(
@@ -29,10 +30,11 @@ def build_memory_provider(
     """Memory provider scoped to one user, or None when memory isn't configured."""
     if not memory_enabled():
         return None
+    cfg = tenant_config()
     return FoundryMemoryProvider(
-        project_endpoint=tenant_config().foundry_project_endpoint,
+        project_endpoint=cfg.foundry_project_endpoint,
         credential=credential,
-        memory_store_name=tenant_config().foundry_memory_store,
+        memory_store_name=cfg.foundry_memory_store,
         scope=scope,
         context_prompt=MEMORY_CONTEXT_PROMPT,
         update_delay=0,  # store immediately (default waits 5 min)

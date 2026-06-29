@@ -24,15 +24,17 @@ from app.core.tenant import tenant_config
 
 
 def selfwiki_configured() -> bool:
-    return bool(tenant_config().azure_search_endpoint and tenant_config().selfwiki_search_knowledge_base)
+    cfg = tenant_config()
+    return bool(cfg.azure_search_endpoint and cfg.selfwiki_search_knowledge_base)
 
 
 def build_selfwiki_agent() -> Agent:
     """A grounded expert over this project's own deep-wiki (Foundry IQ agentic retrieval)."""
+    cfg = tenant_config()
     credential = DefaultAzureCredential()
     client = FoundryChatClient(
-        project_endpoint=tenant_config().foundry_project_endpoint or None,
-        model=tenant_config().foundry_model,
+        project_endpoint=cfg.foundry_project_endpoint or None,
+        model=cfg.foundry_model,
         credential=credential,
     )
     # Agentic retrieval (reasoning_effort="medium" = iterative query planning) — the
@@ -45,12 +47,12 @@ def build_selfwiki_agent() -> Agent:
     # GroundedAzureAISearchProvider falls back to a direct search on the index so the
     # agent grounds whenever the content exists.
     search = GroundedAzureAISearchProvider(
-        endpoint=tenant_config().azure_search_endpoint,
-        knowledge_base_name=tenant_config().selfwiki_search_knowledge_base,
+        endpoint=cfg.azure_search_endpoint,
+        knowledge_base_name=cfg.selfwiki_search_knowledge_base,
         credential=credential,
         mode="agentic",
         retrieval_reasoning_effort="medium",
-        fallback_index=tenant_config().selfwiki_search_index,
+        fallback_index=cfg.selfwiki_search_index,
     )
     return client.as_agent(
         name="SelfWikiExpert",

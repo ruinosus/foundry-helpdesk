@@ -115,32 +115,7 @@ class _TenantEnv(BaseSettings):
     hosted_agent_name: str = "helpdesk-concierge"
 
     def as_config(self) -> TenantConfig:
-        return TenantConfig(
-            foundry_project_endpoint=self.foundry_project_endpoint,
-            foundry_model=self.foundry_model,
-            azure_ai_openai_endpoint=self.azure_ai_openai_endpoint,
-            foundry_embedding_model=self.foundry_embedding_model,
-            azure_search_endpoint=self.azure_search_endpoint,
-            azure_search_knowledge_base=self.azure_search_knowledge_base,
-            azure_storage_account=self.azure_storage_account,
-            azure_storage_resource_id=self.azure_storage_resource_id,
-            azure_storage_container=self.azure_storage_container,
-            cockpit_search_knowledge_base=self.cockpit_search_knowledge_base,
-            cockpit_search_index=self.cockpit_search_index,
-            cockpit_storage_container=self.cockpit_storage_container,
-            selfwiki_search_knowledge_base=self.selfwiki_search_knowledge_base,
-            selfwiki_search_index=self.selfwiki_search_index,
-            selfwiki_storage_container=self.selfwiki_storage_container,
-            cockpit_acl_group_map=self.cockpit_acl_group_map,
-            cockpit_acl_classification=self.cockpit_acl_classification,
-            cockpit_acl_default_groups=self.cockpit_acl_default_groups,
-            cockpit_acl_public_group=self.cockpit_acl_public_group,
-            cockpit_acl_internal_group=self.cockpit_acl_internal_group,
-            cockpit_acl_confidential_group=self.cockpit_acl_confidential_group,
-            cockpit_docbundles_path=self.cockpit_docbundles_path,
-            foundry_memory_store=self.foundry_memory_store,
-            hosted_agent_name=self.hosted_agent_name,
-        )
+        return TenantConfig(**{k: getattr(self, k) for k in TenantConfig.__dataclass_fields__})
 
 
 class TenantConfigProvider(Protocol):

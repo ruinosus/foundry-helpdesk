@@ -24,22 +24,24 @@ from app.core.tenant import tenant_config
 
 
 def _knowledge_configured() -> bool:
-    return bool(tenant_config().azure_search_endpoint and tenant_config().azure_search_knowledge_base)
+    cfg = tenant_config()
+    return bool(cfg.azure_search_endpoint and cfg.azure_search_knowledge_base)
 
 
 def build_concierge_agent() -> Agent:
     """Create the concierge, grounding it in the knowledge base when available."""
+    cfg = tenant_config()
     credential = DefaultAzureCredential()
     client = FoundryChatClient(
-        project_endpoint=tenant_config().foundry_project_endpoint or None,
-        model=tenant_config().foundry_model,
+        project_endpoint=cfg.foundry_project_endpoint or None,
+        model=cfg.foundry_model,
         credential=credential,
     )
 
     if _knowledge_configured():
         search = AzureAISearchContextProvider(
-            endpoint=tenant_config().azure_search_endpoint,
-            knowledge_base_name=tenant_config().azure_search_knowledge_base,
+            endpoint=cfg.azure_search_endpoint,
+            knowledge_base_name=cfg.azure_search_knowledge_base,
             credential=credential,
             mode="agentic",
         )
