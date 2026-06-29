@@ -33,6 +33,13 @@ class PlatformSettings(BaseSettings):
     mcp_enabled: bool = False
     mcp_learn_url: str = "https://learn.microsoft.com/api/mcp"
 
+    # Tenants permitted to self-onboard (CSV of tids) — controlled rollout. WE control this.
+    onboarding_allowed_tids: str = ""
+
+    @property
+    def allowed_tids(self) -> set[str]:
+        return {t.strip() for t in self.onboarding_allowed_tids.split(",") if t.strip()}
+
     # CORS origin for the local Next.js frontend
     frontend_origin: str = "http://localhost:3000"
 
