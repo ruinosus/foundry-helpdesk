@@ -51,6 +51,16 @@ Microsoft, verbatim:
   deliberately don't need here). If we later want gradual *feature* rollout, that's a separate
   mechanism, not this field.
 
+## Migration note (operational)
+
+`enabled_domains` defaults to `()` and the `require_domain` gate is fail-closed. A tenant onboarded
+**after** D-runtime is seeded with all domains (`enabled_domains=DOMAIN_IDS`). But a tenant whose
+record was written **before** this change deserializes with `enabled_domains=()` — so in shared mode
+that tenant gets a **403 on every domain until an Admin grants domains** via `PUT /tenant/domains`.
+This is the intended fail-closed direction, not a bug: when migrating an existing shared deployment,
+backfill `enabled_domains` for pre-existing tenants (or expect their first post-deploy requests to
+403) so the 403s aren't mistaken for a regression.
+
 ## Alternatives considered
 
 - **Azure App Configuration feature flags + targeting filter (per-tenant audience)** — the
