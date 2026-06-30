@@ -17,8 +17,17 @@ cloud-published Foundry Assured. Read top to bottom the first time.
 
 ## Quickstart (the short path)
 
-Two scripts collapse most of the manual steps below. From the repo root, after
-`azd auth login && az login`:
+**One command** — [`scripts/up-all.sh`](../scripts/up-all.sh) chains preflight (tools + sign-in) →
+`azd up` → (optional auth) → `bootstrap.sh`, then prints the remaining steps. From the repo root,
+after `azd auth login && az login`:
+
+```bash
+./scripts/up-all.sh                # provision + bootstrap (no sign-in; single identity)
+./scripts/up-all.sh --with-auth    # also create the Entra apps + the 4 app roles (sign-in + HITL)
+./scripts/up-all.sh -h             # help / flags (--provision-only, etc.)
+```
+
+Or run the same stages by hand (what `up-all.sh` calls):
 
 ```bash
 azd up                      # provision all Azure infra (Step 1)
