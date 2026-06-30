@@ -123,26 +123,23 @@ def main() -> int:
     # The gate's inner check ignores its (dependency-wiring) arg and reads _current_tenant.
     gate = require_domain("cockpit")
 
-    def allowed(enabled: tuple[str, ...] | None) -> bool:
+    def _set(enabled: tuple[str, ...] | None) -> None:
         rec = None if enabled is None else TenantRecord(
             tid="t", name="t", tier="shared", status="active",
             data_plane=TenantConfig(), enabled_domains=enabled,
         )
         set_current_tenant(rec)
+
+    def allowed(enabled: tuple[str, ...] | None) -> bool:
+        _set(enabled)
         try:
             asyncio.run(gate(_user=None))
             return True
-        except HTTPException as e:
-            return e.status_code != 403 and (_ for _ in ()).throw(e)  # unexpected non-403
-        except HTTPException:  # unreachable; kept for clarity
+        except HTTPException:
             return False
 
     def denies(enabled: tuple[str, ...] | None) -> bool:
-        rec = None if enabled is None else TenantRecord(
-            tid="t", name="t", tier="shared", status="active",
-            data_plane=TenantConfig(), enabled_domains=enabled,
-        )
-        set_current_tenant(rec)
+        _set(enabled)
         try:
             asyncio.run(gate(_user=None))
             return False
@@ -166,7 +163,7 @@ if __name__ == "__main__":
     sys.exit(main())
 ```
 
-> Note: the `allowed()` helper above is fiddly because `require_domain` returns a coroutine fn. Simplify in Step 3's test if cleaner — the load-bearing assertions are the four `check(...)` lines. Keep `denies(...)` exactly; for `allowed`, a passing call simply must not raise.
+> Note: `require_domain` returns a coroutine fn whose inner `_check` takes a dependency-wiring `_user` arg it ignores — the test calls `gate(_user=None)` to bypass the `Depends`. The load-bearing assertions are the four `check(...)` lines (entitled passes; not-entitled / empty / no-tenant all 403).
 
 - [ ] **Step 2: Run the test to verify it fails**
 
@@ -479,7 +476,7 @@ def platform_configured() -> bool:
     return bool(settings.mcp_enabled and tenant_config().foundry_project_endpoint)
 ```
 
-Confirm each module has `from app.core.settings import settings` (concierge/cockpit/selfwiki import it; platform.py:20 imports it). Add the import if any is missing.
+**Import note:** only `platform.py:20` imports `settings` today — `concierge.py`/`cockpit.py`/`selfwiki.py` import only `tenant_config`. Add `from app.core.settings import settings` to those three (platform already has it).
 
 - [ ] **Step 4: Run the test to verify it passes**
 
@@ -868,9 +865,9 @@ async def stream_platform_agui(body: dict) -> AsyncGenerator[str]:
     surfaces a clean RunErrorEvent rather than crashing.
     """
     from ag_ui.core import (
-        RunErrorEvent, RunFinishedEvent, RunStartedEvent,
+        RunErrorEvent, RunStartedEvent,
         TextMessageEndEvent, TextMessageStartEvent,
-    )
+    )  # RunFinishedEvent added when the real Invocations streaming lands (D-packaging)
     from ag_ui.encoder import EventEncoder
 
     thread_id = body.get("threadId") or body.get("thread_id") or uuid.uuid4().hex
@@ -930,6 +927,8 @@ Expected: PASS — `✅ platform-hosted bridge emits a clean AG-UI envelope (inf
 
 `apps/backend/eval/platform_hosted_e2e_test.py` — mirror the skip-clean pattern of `mcp_brokering_e2e_test.py`: if `tenant_config().foundry_project_endpoint` is empty (no deployed agent), print `⏭ skipped (no deployed platform hosted agent)` and `return 0`. Otherwise drive `stream_platform_agui` against the live Invocations endpoint and assert a non-error terminal event + (when a write is requested) the approval interrupt surfaces. This is the real validation of the Invocations path.
 
+> **Namespace note (executor):** `hosted.py` does `from app.core.tenant import tenant_config`, so to point the bridge at a configured endpoint the E2E must patch `app.services.hosted.tenant_config` (the importing namespace), not `app.core.tenant.tenant_config` — the same lesson `mcp_brokering_e2e_test.py:137-142` already applies (it patches both `_tenant_mod` and `_tools_mod`).
+
 - [ ] **Step 8: Commit**
 
 ```bash
@@ -977,7 +976,7 @@ const runtime = new CopilotRuntime({
 
 - [ ] **Step 3: Add the live/hosted toggle in `AssuranceConsole.tsx`**
 
-When `domain.hostedAgentId` is set, render a `seg` toggle (mirroring `HelpdeskApp.tsx:56-63`) and switch the `CopilotChat agentId` between `domain.id` (live) and `domain.hostedAgentId` (hosted). Add near the top of the rendering component:
+When `domain.hostedAgentId` is set, render a `seg` toggle (mirroring `apps/frontend/components/chat/HelpdeskApp.tsx:56-63`) and switch the `CopilotChat agentId` between `domain.id` (live) and `domain.hostedAgentId` (hosted). The `.seg` / `.seg button.on` styles already exist in `apps/frontend/styles/globals.css` — the toggle is styled for free. Add near the top of the rendering component:
 ```typescript
 import { useState } from "react";  // already imported
 const [mode, setMode] = useState<"live" | "hosted">("live");
