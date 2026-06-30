@@ -391,6 +391,10 @@ resource userAiUser 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!
 // ---------------------------------------------------------------------------
 
 output FOUNDRY_PROJECT_ENDPOINT string = 'https://${accountName}.services.ai.azure.com/api/projects/${projectName}'
+// ARM resource id of the Foundry project — azd reads this (AZURE_AI_PROJECT_ID) to resolve the
+// target project when deploying hosted agents (azure.ai.agent). Surfacing it as an output keeps it
+// in lockstep with the account/project names — so a rename never leaves a stale manually-set value.
+output AZURE_AI_PROJECT_ID string = project.id
 output AZURE_AI_ACCOUNT_ENDPOINT string = account.properties.endpoint
 output AZURE_AI_OPENAI_ENDPOINT string = 'https://${accountName}.openai.azure.com'
 output FOUNDRY_MODEL string = modelDeploymentName

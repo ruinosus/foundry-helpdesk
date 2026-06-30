@@ -92,6 +92,7 @@ output WEB_URL string = apps.outputs.WEB_URL
 
 // Surfaced into .azure/<env>/.env by azd — feed these to the backend / ingestion.
 output FOUNDRY_PROJECT_ENDPOINT string = resources.outputs.FOUNDRY_PROJECT_ENDPOINT
+output AZURE_AI_PROJECT_ID string = resources.outputs.AZURE_AI_PROJECT_ID   // azd uses this to deploy hosted agents
 output FOUNDRY_MODEL string = resources.outputs.FOUNDRY_MODEL
 output FOUNDRY_EMBEDDING_MODEL string = resources.outputs.FOUNDRY_EMBEDDING_MODEL
 output AZURE_AI_ACCOUNT_ENDPOINT string = resources.outputs.AZURE_AI_ACCOUNT_ENDPOINT
