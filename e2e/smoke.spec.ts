@@ -98,9 +98,12 @@ test("authenticated smoke — sign in + 4 domains + grounded helpdesk answer", a
           new Promise<string>((res) => setTimeout(() => res("<read-timeout>"), 20_000)),
         ]);
         if (body) {
-          // The full agent-run SSE goes to its own file so we can see the exact AG-UI event order
-          // (RUN_STARTED → … → the failing event) when debugging stream-protocol incompatibilities.
-          if (isRun) fs.writeFileSync(path.join(STEPS_DIR, "..", "run-stream.txt"), body, "utf8");
+          // The full agent-run SSE goes to its own per-agent file so we can see the exact AG-UI event
+          // order (RUN_STARTED → … → the failing/finishing event) for each agent we exercise.
+          if (isRun) {
+            const agentId = (u.match(/\/agent\/([^/]+)\/run/) || [])[1] || "unknown";
+            fs.writeFileSync(path.join(STEPS_DIR, "..", `run-stream-${agentId}.txt`), body, "utf8");
+          }
           const errLines = body
             .split("\n")
             .filter((l) => /error|exception|traceback|401|403|500|RUN_ERROR|denied|unauthor/i.test(l))
@@ -160,8 +163,28 @@ test("authenticated smoke — sign in + 4 domains + grounded helpdesk answer", a
   // for real citations. Not a hard gate: on a cold backend the first stream can drop and the view
   // resets to the welcome (tracked as an iteration-2 hardening item), so we screenshot regardless.
   const sourcesPlaceholder = page.getByText(/fontes que a resposta citar aparecem aqui/i);
-  await sourcesPlaceholder.waitFor({ state: "hidden", timeout: 150_000 }).catch(() => {});
+  await sourcesPlaceholder.waitFor({ state: "hidden", timeout: 25_000 }).catch(() => {});
   await page.waitForTimeout(2000);
   await shot(page, "helpdesk-answer");
+
+  // 3) HOSTED-AGENT path (the keyless workaround): /d/helpdesk now exposes a Live/Hosted toggle.
+  //    "Hosted" runs helpdesk-hosted, which invokes the Foundry hosted agent via the agent endpoint
+  //    (/agents/<name>/.../responses) — a path the MI IS authorized for, unlike raw model inference
+  //    (/openai/v1/responses) which 403s. This is where the grounded answer should actually complete.
+  await page.goto("/d/helpdesk");
+  await page.waitForLoadState("networkidle").catch(() => {});
+  const hostedBtn = page.getByRole("button", { name: /^hosted$/i });
+  if (await hostedBtn.isVisible().catch(() => false)) {
+    await hostedBtn.click();
+    await shot(page, "helpdesk-hosted-mode");
+    const pc = page.locator("textarea, [contenteditable='true']").first();
+    await pc.click();
+    await pc.fill("Como faço rollback de um deploy em produção?");
+    await pc.press("Enter");
+    await page.waitForTimeout(75_000); // hosted agent: cold-start + invoke + grounded retrieval
+    await shot(page, "helpdesk-hosted-answer");
+  } else {
+    await shot(page, "helpdesk-no-hosted-toggle");
+  }
   dumpDiag();
 });

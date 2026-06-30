@@ -39,6 +39,10 @@ export const DOMAINS: Domain[] = [
       "Meu pod está em CrashLoopBackOff, por onde começo?",
     ],
     endpoint: "/helpdesk",
+    // Foundry hosted twin (backend /helpdesk-hosted). The hosted agent runs inside Foundry, so the
+    // backend invokes it via the agent endpoint (/agents/<name>/.../responses) — a path the MI IS
+    // authorized for, unlike raw model inference (/openai/v1/responses) which 403s on this project.
+    hostedAgentId: "helpdesk-hosted",
   },
   {
     id: "cockpit",
