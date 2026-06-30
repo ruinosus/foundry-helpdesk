@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.44.1.10279",
-      "templateHash": "10857760491083028985"
+      "templateHash": "5406096157426812849"
     }
   },
   "parameters": {
@@ -95,7 +95,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.44.1.10279",
-              "templateHash": "4107480212881628523"
+              "templateHash": "5901273997973579292"
             }
           },
           "parameters": {
@@ -604,6 +604,14 @@
             "AZURE_AI_PROJECT_ID": {
               "type": "string",
               "value": "[resourceId('Microsoft.CognitiveServices/accounts/projects', variables('accountName'), variables('projectName'))]"
+            },
+            "AZURE_AI_ACCOUNT_ID": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.CognitiveServices/accounts', variables('accountName'))]"
+            },
+            "AZURE_SEARCH_ID": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Search/searchServices', variables('searchName'))]"
             },
             "AZURE_AI_ACCOUNT_ENDPOINT": {
               "type": "string",

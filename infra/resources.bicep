@@ -395,6 +395,11 @@ output FOUNDRY_PROJECT_ENDPOINT string = 'https://${accountName}.services.ai.azu
 // target project when deploying hosted agents (azure.ai.agent). Surfacing it as an output keeps it
 // in lockstep with the account/project names — so a rename never leaves a stale manually-set value.
 output AZURE_AI_PROJECT_ID string = project.id
+// ARM ids of the account + search — read by the postdeploy hook (scripts/hook-postdeploy.sh) to
+// grant each hosted agent's deploy-time instance identity its runtime roles (Azure AI User on the
+// account, Search Index Data Reader on search), which Bicep can't pre-assign (identity is minted at deploy).
+output AZURE_AI_ACCOUNT_ID string = account.id
+output AZURE_SEARCH_ID string = search.id
 output AZURE_AI_ACCOUNT_ENDPOINT string = account.properties.endpoint
 output AZURE_AI_OPENAI_ENDPOINT string = 'https://${accountName}.openai.azure.com'
 output FOUNDRY_MODEL string = modelDeploymentName

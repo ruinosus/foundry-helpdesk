@@ -6,11 +6,12 @@
 #
 # What it does (in order):
 #   preflight  — tools installed (azd/az/uv/node) + you're logged in (azd + az)
-#   1) azd up              — provision all Azure infra (Bicep control plane)
-#   2) setup-entra.sh +    — OPTIONAL (--with-auth): the 2 Entra app regs (sign-in + OBO)
-#      setup-app-roles.sh    + the 4 app roles (Admin/Author/Approver/Reader) for HITL/admin
-#   3) bootstrap.sh        — fill .env from azd, ingest the helpdesk KB, provision memory
-#   then prints the remaining steps (run local · deploy hosted · platform/Toolbox · stamp).
+#   1) OPTIONAL (--with-auth) — the 2 Entra app regs (sign-in + OBO) + the 4 app roles
+#      (Admin/Author/Approver/Reader) + self-assign you the Admin role — BEFORE provision.
+#   2) azd up   — provision + build + deploy. The azd HOOKS (azure.yaml) then auto-do the rest:
+#      • postprovision: push NEXT_PUBLIC_*/ENTRA_* into the azd env (web build) + ingest KB + memory
+#      • postdeploy:    grant each hosted agent's instance identity its runtime RBAC (the 403 fix)
+#   No manual post-deploy commands. Genuinely-external bits (consent / Partner Center / Toolbox) remain.
 #
 # Usage (from the repo root):
 #   ./scripts/up-all.sh                 # provision + bootstrap (no sign-in; single identity)
@@ -62,66 +63,60 @@ az account show  >/dev/null 2>&1 || die "Not signed in to az — run:  az login"
 SUB="$(az account show --query name -o tsv 2>/dev/null || echo '?')"
 ok "signed in (azd + az) · subscription: $SUB"
 
-# ── Stage 1: provision ────────────────────────────────────────────────────────
-step "1/3 — Provisioning Azure infra (azd up)"
-echo "  This runs infra/ (Foundry + AI Search + Storage + ACR + Container Apps)."
-echo "  azd will prompt for an environment name + region on first run."
-azd up
-ok "infra provisioned"
-
-if [ "$PROVISION_ONLY" = "1" ]; then
-  step "Done (provision-only)."
-  echo "  Next: ./scripts/bootstrap.sh   (fill .env + ingest the KB + memory)"
-  exit 0
-fi
-
-# ── Stage 2: auth (optional) ──────────────────────────────────────────────────
+# ── Stage 1: auth (optional, BEFORE provision) ────────────────────────────────
+# App registrations need no infra; and the web image bakes NEXT_PUBLIC_* at BUILD time, so the
+# Entra values must exist before azd's deploy phase. Doing auth first (then the postprovision hook
+# pushes the values into the azd env) is what makes the deployed web sign-in actually work.
 if [ "$WITH_AUTH" = "1" ]; then
-  step "2/3 — Entra app registrations + app roles (--with-auth)"
-  echo "  Needs rights to create app registrations AND grant admin consent."
+  step "1/2 — Entra sign-in + app roles + Admin (--with-auth)"
+  echo "  Needs rights to create app registrations + grant admin consent."
   ./scripts/setup-entra.sh
-  # setup-app-roles needs the API client id setup-entra just wrote into apps/backend/.env
   API_ID="$(sed -n 's/^ENTRA_API_CLIENT_ID=\(.*\)$/\1/p' apps/backend/.env 2>/dev/null | head -1)"
   if [ -n "${API_ID:-}" ]; then
     ENTRA_API_CLIENT_ID="$API_ID" ./scripts/setup-app-roles.sh
-    ok "Entra apps + 4 app roles (Admin/Author/Approver/Reader) ready"
-    echo "  ⚠ Now assign YOURSELF the Admin role: Entra → Enterprise applications → the API app"
-    echo "     → Users and groups → Add → you → role Admin   (required for HITL approval + /admin/users)"
+    ENTRA_API_CLIENT_ID="$API_ID" ./scripts/assign-admin-role.sh || true   # you → Admin, via Graph (no portal click)
+    ok "Entra apps + 4 app roles + Admin self-assigned"
   else
-    echo "  ⚠ Could not read ENTRA_API_CLIENT_ID from apps/backend/.env — run scripts/setup-app-roles.sh by hand."
+    echo "  ⚠ Could not read ENTRA_API_CLIENT_ID — run setup-app-roles.sh + assign-admin-role.sh by hand."
   fi
 else
-  step "2/3 — Auth (skipped)"
-  echo "  Running WITHOUT sign-in (single DefaultAzureCredential identity)."
-  echo "  Re-run with --with-auth to add Entra sign-in + the HITL/admin roles."
+  step "1/2 — Auth skipped"
+  echo "  Single DefaultAzureCredential identity (no sign-in). Re-run with --with-auth for Entra + HITL roles."
 fi
 
-# ── Stage 3: bootstrap (env + KB + memory) ────────────────────────────────────
-step "3/3 — Bootstrap (fill .env from azd · ingest helpdesk KB · provision memory)"
-./scripts/bootstrap.sh
-ok "data plane bootstrapped (helpdesk KB + memory)"
+# ── Stage 2: provision + deploy (azd up) — the hooks do the rest ───────────────
+# postprovision hook: push NEXT_PUBLIC_*/ENTRA_* into the azd env (web build) + bootstrap the KB+memory.
+# postdeploy hook:    grant each hosted agent's deploy-time instance identity its runtime RBAC (403 fix).
+azd env set AUTO_BOOTSTRAP true >/dev/null 2>&1 || true   # tell the postprovision hook to ingest the KB
+if [ "$PROVISION_ONLY" = "1" ]; then
+  step "2/2 — azd provision (+ postprovision hook: env push · KB bootstrap)"
+  azd provision
+  ok "infra provisioned + data plane bootstrapped"
+  exit 0
+fi
+step "2/2 — azd up (provision · build · deploy — hooks auto-do env, KB, and agent RBAC)"
+echo "  azd prompts for an environment name + region on first run."
+azd up
+ok "provisioned + deployed"
 
-# ── Next steps ────────────────────────────────────────────────────────────────
-step "Provisioned. Run it locally:"
+# ── Done ──────────────────────────────────────────────────────────────────────
+step "Done. The azd hooks automated the post-deploy steps:"
 cat <<'EOF'
-  cd apps/backend  && uv run uvicorn app.main:app --port 8000 --reload
-  cd apps/frontend && npm install && npm run dev      # → http://localhost:3000
+    ✓ NEXT_PUBLIC_*/ENTRA_* pushed into the azd env before the web build (sign-in works)
+    ✓ helpdesk KB ingested + memory provisioned        (postprovision hook)
+    ✓ each hosted agent's runtime RBAC granted          (postdeploy hook — the 403 fix)
+    ✓ (--with-auth) you assigned the Admin app role     (Graph, no portal click)
 
-  Other KBs (optional, data-plane — see docs/DEPLOYMENT.md › Step 4):
-    • cockpit   — COCKPIT_DOCBUNDLES=/path uv run python -m app.knowledge.ingest_cockpit
-    • selfwiki  — ingests docs/wiki (already regenerated) via the env-override ingest
+  Run it locally:
+    cd apps/backend  && uv run uvicorn app.main:app --port 8000 --reload
+    cd apps/frontend && npm install && npm run dev      # → http://localhost:3000
 
-  Deploy to the cloud (optional — docs/DEPLOYMENT.md › Steps 6–7):
-    • hosted agent:  azd deploy helpdesk-concierge   (then the post-deploy RBAC, or you get 403)
-    • backend + web: ./scripts/set-deploy-env.sh && azd up
+  Still manual (genuinely external):
+    • Entra admin consent — only if your account lacked consent rights when setup-entra ran (1 portal click)
+    • cockpit / selfwiki KBs — the per-domain ingest (cockpit needs a docbundles path); see DEPLOYMENT.md › Step 4
+    • platform domain tools — bind a Foundry Toolbox + `azd env set TOOLBOX_NAME …` (ADR-011 / D-PACKAGING-RUNBOOK)
+    • dedicated stamp — the Managed Application marketplace publish (Partner Center)
 
-  SaaS / D-packaging add-ons (docs/D-PACKAGING-RUNBOOK.md):
-    • platform domain (real tools): configure per-tenant Connections + the Foundry Toolbox
-      (OAuth passthrough, ADR-011), then  azd deploy platform-concierge  + set TOOLBOX_NAME
-    • shared multi-tenant:  DEPLOYMENT_MODE=shared + the Table tenant store + multi-tenant Entra
-    • dedicated stamp:  the Managed Application marketplace path (needs a Partner Center account)
-
-  Cost: ≈ $79/mo per data plane while up (~93% is AI Search Basic, no scale-to-zero).
-    Stop the meter:   azd down --purge
+  Cost: ≈ $79/mo per data plane while up (~93% AI Search Basic).  Stop it:  azd down --purge
 EOF
 ok "up-all complete"
