@@ -45,6 +45,17 @@ param entraApiClientSecret string = ''
 var resourceToken = toLower(uniqueString(subscription().id, resourceGroup().id, location))
 var tags = { 'foundry-helpdesk-stamp': 'managed-app' }
 
+// DEPLOYMENT-MODE CAVEAT (read before the two module compositions below):
+// BOTH composed modules — '../resources.bicep' and '../containerapps.bicep' —
+// declare a Log Analytics workspace named `log-helpdesk-${resourceToken}` (same
+// name, identical body; pre-existing in the shared modules). As two separate
+// nested module deployments this COMPILES CLEAN and CONVERGES under ARM
+// **Incremental** mode (both deploy the same workspace → idempotent). It is
+// fragile under **Complete** mode, where reconciliation of a duplicate-named
+// resource declared by two modules is undefined/foot-gun territory.
+// => Managed-application updates for THIS template must use **Incremental** mode
+//    (see docs/D-PACKAGING-RUNBOOK.md). Do not switch to Complete here.
+
 // Foundry account + project + model + search + storage + registry + app identity.
 // principalId is intentionally EMPTY: in the managed-app model the publisher
 // operates the stamp, so no deploying-user data-plane grant is created here

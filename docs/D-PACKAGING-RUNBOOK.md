@@ -50,11 +50,16 @@ Marketplace* program (publisher management). Not available in CI.
    `managed-app.zip`.
 
 4. **Plan settings (publisher management).**
-   - **Deployment mode:** choose **Incremental** unless you specifically want the
-     managed RG reset on each update. *Complete* mode deletes resources in the
-     managed RG that are absent from the template on redeploy — only use it if
-     you accept that destructive reconciliation. Default to **Incremental** for a
-     stamp that accrues runtime state (tickets file share, Foundry connections).
+   - **Deployment mode: use Incremental (recommended).** Choose **Incremental**
+     unless you specifically want the managed RG reset on each update. *Complete*
+     mode deletes resources in the managed RG that are absent from the template on
+     redeploy — only use it if you accept that destructive reconciliation. Default
+     to **Incremental** for a stamp that accrues runtime state (tickets file share,
+     Foundry connections). **Specific to this template:** both composed modules
+     (`resources.bicep`, `containerapps.bicep`) declare the same
+     `log-helpdesk-${resourceToken}` Log Analytics workspace, which converges
+     cleanly under Incremental; Complete-mode reconciliation of a duplicate-named
+     cross-module resource is fragile, so **do not pick Complete** for this app.
    - **Authorizations / publisher access:** grant the publisher's managing
      identity (the same principal used for Lighthouse, Step C) the operator role
      on the managed RG, so we can operate the stamp the customer cannot directly
