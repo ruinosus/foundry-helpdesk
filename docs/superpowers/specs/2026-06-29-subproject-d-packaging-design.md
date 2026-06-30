@@ -67,11 +67,18 @@ flowchart LR
 ```
 
 **Components:**
-1. **`apps/hosted-platform/`** (new; mirrors `apps/hosted-agent/` layout) — `main.py` wraps the platform
-   agent in **`InvocationsHostServer`** (`agent_framework_foundry_hosting`; the Invocations analog of the
-   `ResponsesHostServer` the existing agents use; serves `POST /invocations` on port 8088). It serves the
-   **same** AG-UI agent we run at `/platform` (not a single-identity Responses variant). `agent.yaml`
-   declares the Invocations protocol; `Dockerfile` + `requirements.txt` mirror the existing hosted agents.
+1. **`apps/hosted-platform/`** (new; mirrors the `apps/hosted-agent/` **file layout only**, NOT its
+   content) — `main.py` wraps the platform agent in **`InvocationsHostServer`**
+   (`agent_framework_foundry_hosting`; the Invocations analog of the `ResponsesHostServer` the existing
+   agents use; serves `POST /invocations` on port 8088). **Critical inversion:** the existing
+   `hosted-agent`/`hosted-cockpit` are *deliberately stripped, single-identity Responses* variants
+   (no OBO/HITL); `hosted-platform` does the **opposite** — it serves the **same AG-UI agent** we run at
+   `/platform`, keeping per-tenant + write-approval HITL. So do NOT copy hosted-agent's workflow-rebuild /
+   single-identity stripping — only the file scaffold. **Which agent object the host server wraps (load-bearing,
+   step-0):** `build_platform_agent()` with its MCP tools resolved through the **Foundry Toolbox** (OAuth
+   passthrough supplies per-user identity) rather than the live path's `build_mcp_tools()` — there is no
+   per-request HTTP auth context in the container; identity arrives via the Toolbox. `agent.yaml` declares the
+   Invocations protocol; `Dockerfile` + `requirements.txt` mirror the existing hosted agents.
 2. **`azure.yaml`** — a 3rd `host: azure.ai.agent` service `platform-concierge` → `apps/hosted-platform`
    (matches `platform_hosted_agent_name`).
 3. **Per-tenant tools via Foundry Toolbox + OAuth passthrough** ([ADR-011](../../adr/ADR-011-hosted-per-tenant-foundry-toolbox-passthrough.md)) — the deployed agent
@@ -127,7 +134,9 @@ delegation against a real tenant.
    Open Q#3). A data-driven `TIER_DOMAINS: dict[str, tuple[str, ...]]` in `app/core/tenant.py` (`"shared" →
    DOMAIN_IDS`, room for a smaller `"starter"` set). `POST /tenant/onboard` accepts an optional `tier`
    (Admin-gated via the existing `onboarding_guard`) and seeds `enabled_domains = TIER_DOMAINS.get(rec.tier,
-   DOMAIN_IDS)`. Unknown/unset tier → `DOMAIN_IDS` (preserves today's "all by default", non-breaking). The
+   DOMAIN_IDS)`. Unknown/unset tier → `DOMAIN_IDS` (preserves today's "all by default", non-breaking).
+   **Note:** `onboard()` today has **no request body** (it takes only `user: User = Depends(onboarding_guard)`),
+   so this introduces a small `OnboardBody(BaseModel)` with an optional `tier: str | None` (the plan names it). The
    request-time `require_domain` gate stays fail-closed regardless. Infra-free unit-tested.
 2. **Collapse `PerRequestPlatformAgent` into `PerRequestAgent`** (the Task-4 reviewer's flagged debt). Add
    optional `name`/`description` overrides to `PerRequestAgent`; express the platform proxy as
@@ -175,9 +184,10 @@ streaming; the marketplace publish + Lighthouse delegation; the #3199 live firin
 
 ## Open questions (for the plan)
 
-1. **`InvocationsHostServer` signature** — verify the exact import + constructor in the installed
-   `agent_framework_foundry_hosting` (and whether the existing AG-UI platform agent drops straight in) before
-   `apps/hosted-platform/main.py` relies on it. Don't invent it (rule #1).
+**Phase 1 step-0 verification checklist (gating precondition for ANY Phase 1 coding — rule #1, don't invent):**
+1. **`InvocationsHostServer` signature** — the exact import + constructor in the installed
+   `agent_framework_foundry_hosting`, **and whether the existing AG-UI platform agent (`build_platform_agent`)
+   drops straight in** unchanged (the single most load-bearing integration point).
 2. **Foundry Toolbox config surface** — how `build_hosted_from_connections`'s output maps to Toolbox MCP
    configuration + how OAuth identity passthrough is declared per connection (verify against the Toolbox /
    mcp-authentication docs + SDK before relying).
