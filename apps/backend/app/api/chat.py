@@ -9,6 +9,7 @@ router = APIRouter()
 
 
 def _hosted_deps(domain_id: str) -> list:
+    # mirrors main.py::_domain_deps (the canonical domain-gate helper) — keep the shared-gate logic in sync
     deps = auth_dependencies()
     if settings.deployment_mode == "shared":
         from fastapi import Depends

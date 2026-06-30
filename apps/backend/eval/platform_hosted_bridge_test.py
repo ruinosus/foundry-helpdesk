@@ -32,7 +32,8 @@ def main() -> int:
     check("emits a RUN_STARTED", "RUN_STARTED" in blob or "RunStarted" in blob)
     check("emits a terminal RUN_FINISHED or RUN_ERROR",
           any(t in blob for t in ("RUN_FINISHED", "RUN_ERROR", "RunFinished", "RunError")))
-    check("did not raise", True)
+    check("terminal is RUN_ERROR (skeleton, not a real stream)",
+          "RUN_ERROR" in blob or "RunError" in blob)
 
     if failures:
         print(f"\n❌ {len(failures)} assertion(s) failed.")
