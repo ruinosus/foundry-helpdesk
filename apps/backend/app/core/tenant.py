@@ -174,6 +174,31 @@ def current_tenant_id() -> str | None:
     return getattr(rec, "tid", None) if rec is not None else None
 
 
+# The registered agent domains (shared mode mounts all; entitlement gates per tenant).
+DOMAIN_IDS: tuple[str, ...] = ("helpdesk", "cockpit", "selfwiki", "platform")
+
+
+def require_domain(domain_id: str):
+    """Shared-mode per-tenant entitlement gate (ADR-010). Fail-closed: 403 unless the
+    resolved tenant's enabled_domains contains domain_id.
+
+    Sub-depends on require_user so FastAPI resolves the tenant (sets _current_tenant)
+    before this runs — ordering comes from the dependency graph, not list position.
+    Imported lazily (factory call time = route setup) to avoid an import cycle at module load.
+    """
+    from fastapi import Depends, HTTPException
+
+    from app.core.auth import require_user
+
+    async def _check(_user=Depends(require_user)) -> None:
+        rec = _current_tenant.get()
+        enabled = getattr(rec, "enabled_domains", None) or ()
+        if rec is None or domain_id not in enabled:
+            raise HTTPException(status_code=403, detail=f"domain '{domain_id}' not enabled for tenant")
+
+    return _check
+
+
 # The active provider, selected at boot (a later task wires DEPLOYMENT_MODE; default = SingleTenant).
 _provider: TenantConfigProvider = SingleTenantConfigProvider()
 
