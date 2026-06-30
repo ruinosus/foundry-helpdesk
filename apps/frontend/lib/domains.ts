@@ -57,6 +57,9 @@ export const DOMAINS: Domain[] = [
       "Como funciona a hierarquia de multi-tenancy?",
     ],
     endpoint: "/cockpit",
+    // Foundry hosted twin (backend /cockpit-hosted). The hosted cockpit-expert agent runs inside
+    // Foundry — the MI can invoke it (unlike the live /cockpit raw inference, which 403s).
+    hostedAgentId: "cockpit-hosted",
   },
   {
     id: "selfwiki",

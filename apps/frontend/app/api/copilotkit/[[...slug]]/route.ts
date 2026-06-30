@@ -24,6 +24,11 @@ const AGUI_URL = process.env.AGUI_URL ?? `${BACKEND}/helpdesk`;
 // "Hosted agent" toggle renders the same CopilotChat. No resume transform needed
 // — the hosted path is request→response with no interrupts.
 const HOSTED_AGUI_URL = process.env.HOSTED_AGUI_URL ?? `${BACKEND}/helpdesk-hosted`;
+// Cockpit's hosted twin (backend /cockpit-hosted) — plain Responses→AG-UI like helpdesk-hosted
+// (grounded Q&A, no HITL). The managed identity CAN invoke hosted agents, so this answers where
+// the live /cockpit raw-inference path 403s.
+const COCKPIT_HOSTED_AGUI_URL =
+  process.env.COCKPIT_HOSTED_AGUI_URL ?? `${BACKEND}/cockpit-hosted`;
 // D-runtime: the platform domain's hosted twin (backend /platform-hosted). Unlike
 // helpdesk-hosted, the platform hosted path carries HITL (the write-approval interrupt
 // over Invocations), so it goes through the resume bridge — not a bare HttpAgent.
@@ -58,6 +63,8 @@ function withResumeBridge(url: string): HttpAgent {
 }
 
 const helpdeskHosted = new HttpAgent({ url: HOSTED_AGUI_URL });
+// Plain HttpAgent (no resume bridge): cockpit-hosted is grounded Q&A, no interrupts.
+const cockpitHosted = new HttpAgent({ url: COCKPIT_HOSTED_AGUI_URL });
 // Resume bridge (not a bare HttpAgent): platform-hosted has a write-approval interrupt.
 const platformHosted = withResumeBridge(PLATFORM_HOSTED_AGUI_URL);
 
@@ -89,6 +96,7 @@ const runtime = new CopilotRuntime({
   agents: {
     ...registryAgents,
     "helpdesk-hosted": helpdeskHosted,
+    "cockpit-hosted": cockpitHosted,
     "platform-hosted": platformHosted,
   },
 });
