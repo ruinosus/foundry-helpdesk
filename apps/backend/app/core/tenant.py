@@ -186,7 +186,8 @@ DOMAIN_IDS: tuple[str, ...] = ("helpdesk", "cockpit", "selfwiki", "platform")
 # the request-time require_domain gate stays fail-closed regardless of the seed).
 TIER_DOMAINS: dict[str, tuple[str, ...]] = {
     "shared": DOMAIN_IDS,
-    # example restricted tier (no consumer yet; the hook ADR-010 anticipated):
+    # "starter": illustrative only — not wired to any product tier yet (the ADR-010 hook).
+    # Kept to exercise the non-trivial branch + the ⊆ DOMAIN_IDS subset test.
     "starter": ("helpdesk", "selfwiki"),
 }
 

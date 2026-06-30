@@ -84,12 +84,13 @@ class OnboardBody(BaseModel):
 
 
 @router.post("/onboard")
-def onboard(body: OnboardBody = OnboardBody(), user: User = Depends(onboarding_guard)):
+def onboard(body: OnboardBody | None = None, user: User = Depends(onboarding_guard)):
     """Create the tenant record (idempotent). Gated by Admin + allow-list, not resolution.
 
     Seeds enabled_domains from the tier (ADR-010 Open Q#3); a bodyless POST → tier None →
     "shared" → all domains, identical to before.
     """
+    body = body or OnboardBody()
     store = _store()
     tid = getattr(user, "tid", None)
     if store.get(tid) is None:
