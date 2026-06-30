@@ -10,13 +10,8 @@
 // We override the HttpAgent's fetch to translate the body just before it hits
 // the backend, so the workflow interrupt can be resumed.
 
-import {
-  CopilotRuntime,
-  ExperimentalEmptyAdapter,
-  copilotRuntimeNextJSAppRouterEndpoint,
-} from "@copilotkit/runtime";
+import { CopilotRuntime, createCopilotRuntimeHandler } from "@copilotkit/runtime/v2";
 import { HttpAgent } from "@ag-ui/client";
-import { NextRequest } from "next/server";
 import { DOMAINS } from "@/lib/domains";
 
 // Single base for the backend AG-UI endpoints. In the deployed web container BACKEND_URL is set
@@ -82,6 +77,12 @@ const registryAgents = Object.fromEntries(
   ]),
 );
 
+// v2 multi-route runtime + fetch handler. The v2 client (react-core/react-ui 1.61.x) drives agent
+// runs over sub-paths (POST /agent/:id/run, GET /info, …). createCopilotRuntimeHandler defaults to
+// "multi-route", which serves exactly those. The legacy copilotRuntimeNextJSAppRouterEndpoint is
+// SINGLE-route only (envelope { method } at /api/copilotkit) and 400s the agent-run sub-path with
+// "Missing method field", which silently resets the chat. `basePath` strips the route prefix so the
+// catch-all [[...slug]] segments match the multi-route patterns. (Diagnosed via the e2e harness.)
 const runtime = new CopilotRuntime({
   // helpdesk keeps its hosted twin; everything else (incl. platform) comes from the registry.
   // platform-hosted is the platform domain's hosted twin (resume bridge for its write-approval interrupt).
@@ -92,14 +93,11 @@ const runtime = new CopilotRuntime({
   },
 });
 
-const handle = (req: NextRequest) => {
-  const { handleRequest } = copilotRuntimeNextJSAppRouterEndpoint({
-    runtime,
-    serviceAdapter: new ExperimentalEmptyAdapter(),
-    endpoint: "/api/copilotkit",
-  });
-  return handleRequest(req);
-};
+const handler = createCopilotRuntimeHandler({
+  runtime,
+  basePath: "/api/copilotkit",
+});
 
-export const GET = handle;
-export const POST = handle;
+export const GET = handler;
+export const POST = handler;
+export const OPTIONS = handler;
