@@ -36,6 +36,7 @@ from app.agents.cockpit import build_cockpit_agent
 from app.agents.concierge import build_concierge_agent
 from app.agents.selfwiki import build_selfwiki_agent
 from app.core.settings import settings
+from app.core.tenant import tenant_config
 from eval.assertions import (
     _TITLE_PREFIX,
     check_cites_a_source,
@@ -265,7 +266,7 @@ async def _run(cloud: bool, safety: bool, domain: str) -> int:
 
         cred = DefaultAzureCredential()
         project = AIProjectClient(
-            endpoint=settings.foundry_project_endpoint, credential=cred
+            endpoint=tenant_config().foundry_project_endpoint, credential=cred
         )
         if domain in ("cockpit", "selfwiki"):
             # SIMILARITY is the reference-based correctness score (answer vs the
@@ -288,7 +289,7 @@ async def _run(cloud: bool, safety: bool, domain: str) -> int:
         else:
             evaluators = [FoundryEvals.GROUNDEDNESS, FoundryEvals.RELEVANCE, FoundryEvals.COHERENCE]
         foundry = FoundryEvals(
-            project_client=project, model=settings.foundry_model, evaluators=evaluators
+            project_client=project, model=tenant_config().foundry_model, evaluators=evaluators
         )
 
     where = "local policy gate" + (" + Foundry cloud judges" if cloud else "")
