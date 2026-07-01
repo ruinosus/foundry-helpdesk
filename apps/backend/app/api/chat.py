@@ -19,6 +19,48 @@ def _hosted_deps(domain_id: str) -> list:
     return deps
 
 
+@router.post("/cockpit", dependencies=_hosted_deps("cockpit"))
+async def cockpit(request: Request) -> StreamingResponse:
+    """Grounded Cockpit expert with STRUCTURED citations — the Responses API run AS THE USER (OBO)
+    with the cockpit-kb attached as an inline knowledge_base_retrieve MCP tool. Per-user document
+    ACL via the x-ms-query-source-authorization header (acl=True). Replaces the old agent-framework
+    AzureAISearchContextProvider mount (prose citations, empty annotations, MI 403). See
+    app/services/grounded.py + the 2026-07-01 spec."""
+    from app.agents.prompts import COCKPIT_INSTRUCTIONS
+    from app.services.grounded import GroundedDomain, stream_grounded_agui
+
+    cfg = tenant_config()
+    domain = GroundedDomain(
+        kb_name=cfg.cockpit_search_knowledge_base,
+        instructions=COCKPIT_INSTRUCTIONS,
+        acl=True,
+        search_endpoint=cfg.azure_search_endpoint,
+    )
+    return StreamingResponse(
+        stream_grounded_agui(await request.json(), domain), media_type="text/event-stream"
+    )
+
+
+@router.post("/selfwiki", dependencies=_hosted_deps("selfwiki"))
+async def selfwiki(request: Request) -> StreamingResponse:
+    """Grounded Selfwiki expert with structured citations — same Responses+MCP path as /cockpit but
+    single-audience (acl=False → NO x-ms-query-source-authorization header; selfwiki-kb has no
+    permission metadata)."""
+    from app.agents.prompts import SELFWIKI_INSTRUCTIONS
+    from app.services.grounded import GroundedDomain, stream_grounded_agui
+
+    cfg = tenant_config()
+    domain = GroundedDomain(
+        kb_name=cfg.selfwiki_search_knowledge_base,
+        instructions=SELFWIKI_INSTRUCTIONS,
+        acl=False,
+        search_endpoint=cfg.azure_search_endpoint,
+    )
+    return StreamingResponse(
+        stream_grounded_agui(await request.json(), domain), media_type="text/event-stream"
+    )
+
+
 @router.post("/helpdesk-hosted", dependencies=auth_dependencies())
 async def helpdesk_hosted(request: Request) -> StreamingResponse:
     """AG-UI endpoint that proxies the hosted agent, streaming Responses → AG-UI.
