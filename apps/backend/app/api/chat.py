@@ -49,6 +49,17 @@ async def cockpit_hosted(request: Request) -> StreamingResponse:
     )
 
 
+@router.post("/selfwiki-hosted", dependencies=_hosted_deps("selfwiki"))
+async def selfwiki_hosted(request: Request) -> StreamingResponse:
+    """AG-UI twin of /selfwiki — the deployed selfwiki-expert hosted agent (Responses protocol),
+    streamed as AG-UI. Keyless: the MI can invoke hosted agents where the live path 403s."""
+    body = await request.json()
+    return StreamingResponse(
+        stream_agui(body, tenant_config().selfwiki_hosted_agent_name),
+        media_type="text/event-stream",
+    )
+
+
 @router.post("/platform-hosted", dependencies=_hosted_deps("platform"))
 async def platform_hosted(request: Request) -> StreamingResponse:
     """AG-UI twin of /platform — the deployed platform hosted agent over the Invocations

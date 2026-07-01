@@ -74,6 +74,8 @@ export const DOMAINS: Domain[] = [
       "Quais são as fases de implementação do projeto?",
     ],
     endpoint: "/selfwiki",
+    // Foundry hosted twin (backend /selfwiki-hosted) — the MI can invoke it (unlike raw inference).
+    hostedAgentId: "selfwiki-hosted",
   },
   {
     id: "platform",
