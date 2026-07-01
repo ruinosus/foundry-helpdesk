@@ -62,6 +62,7 @@ var roleAzureAiUser = '53ca6127-db72-4b80-b1b0-d745d6d5456d' // Azure AI User / 
 var roleCognitiveServicesUser = 'a97b65f3-24c7-4388-baec-2e87135dc908' // Cognitive Services User (call model deployments)
 var roleSearchServiceContributor = '7ca78c08-252a-4471-8644-bb5ff32d4ba0' // create knowledge bases/sources
 var roleSearchIndexDataReader = '1407120a-92aa-4202-b7e9-c0e197c71c8f' // query (retrieve) indexes
+var roleSearchIndexDataContributor = '8ebe5a00-799e-43f5-93ac-243d3dce84a7' // write index docs: ACL stamping (acl_setup) + purge_orphans (superset of Data Reader)
 var roleStorageBlobDataReader = '2a2b9908-6ea1-4ae2-8e65-a410df84e7d1' // search MI reads corpus blobs
 var roleStorageBlobDataContributor = 'ba92f5b4-2d11-453d-a403-e96b0029c9fe' // caller uploads corpus blobs
 var roleAcrPull = '7f951dda-4ed3-4680-a7ca-43fe172d538d' // project MI pulls the hosted-agent image
@@ -353,12 +354,16 @@ resource userSearchContributor 'Microsoft.Authorization/roleAssignments@2022-04-
   }
 }
 
-// Caller -> query (retrieve) the knowledge base from the local backend.
-resource userSearchReader 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(principalId)) {
-  name: guid(search.id, principalId, roleSearchIndexDataReader)
+// Caller -> query (retrieve) the KB AND write index docs. The data-plane ingest writes documents
+// directly as the caller: document-level ACL stamping (app/knowledge/acl_setup.py) and orphan
+// reconciliation (ingest_cockpit.purge_orphans) both need Search Index Data Contributor — Reader
+// can only query, so a from-scratch `azd up` would 403 on ACL stamping without this. Contributor
+// is a superset of Data Reader, so it also covers retrieval from the local backend.
+resource userSearchIndexContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(principalId)) {
+  name: guid(search.id, principalId, roleSearchIndexDataContributor)
   scope: search
   properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roleSearchIndexDataReader)
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roleSearchIndexDataContributor)
     principalId: principalId
     principalType: effectivePrincipalType
   }
