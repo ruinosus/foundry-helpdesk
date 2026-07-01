@@ -95,9 +95,11 @@ async function askCockpitAs(browser: Browser, upn: string, tag: string): Promise
     await page.waitForTimeout(2000);
     await shot(page, `cockpit-${tag}`);
     if (diag.length) fs.writeFileSync(path.join(STEPS_DIR, `diag-${tag}.log`), diag.join("\n\n"), "utf8");
-    const evidence = (await page.locator(".evidence").innerText().catch(() => "")) || "";
-    const answer = (await assistant.innerText().catch(() => "")) || "";
-    return `${evidence}\n${answer}`.toLowerCase();
+    // Return the CITED SOURCE FILENAMES (the FONTES panel), NOT the answer text — the question is
+    // about "telemetria", so the answer text mentions the topic even for B; the ACL check must be on
+    // whether the confidential DOCUMENT is cited, i.e. the source filenames.
+    const sources = (await page.locator(".citation-src").allInnerTexts().catch(() => [])) || [];
+    return sources.join("\n").toLowerCase();
   } finally {
     await ctx.close();
   }
