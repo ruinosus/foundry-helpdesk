@@ -257,6 +257,14 @@ async def stream_grounded_agui(body: dict, domain: GroundedDomain, user=None) ->
             yield enc.encode(CustomEvent(name="sources", value=sources))
         yield enc.encode(RunFinishedEvent(thread_id=thread_id, run_id=run_id))
     except Exception as exc:  # surface to the UI as a clean run error (mirrors hosted.stream_agui)
+        import logging
+
+        resp = getattr(exc, "response", None)
+        body = getattr(exc, "body", None) or (getattr(resp, "text", "") if resp is not None else "")
+        logging.getLogger("grounded").error(
+            "grounded stream failed [domain acl=%s, user_present=%s, auth=%s]: %r | body=%s",
+            domain.acl, user is not None, settings.auth_enabled, exc, str(body)[:700],
+        )
         yield enc.encode(TextMessageEndEvent(message_id=message_id))
         yield enc.encode(RunErrorEvent(message=str(exc), code=type(exc).__name__))
     finally:
