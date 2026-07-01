@@ -21,6 +21,9 @@ param resourceToken string
 @description('Principal granted data-plane roles (the deploying user). Empty skips assignments.')
 param principalId string = ''
 
+@description('Entra group whose members USE the app. Granted Foundry User on the Foundry account so end users can run inference AS THEMSELVES (OBO) — the grounded synthesis calls the model with the user token, which 403s without data-plane access. Empty skips (single-user/dev). ')
+param appUsersGroupId string = ''
+
 @description('Type of principalId: User for a person (default), ServicePrincipal for CI/CD. ARM rejects a mismatch.')
 param principalType string = 'User'
 var effectivePrincipalType = empty(principalType) ? 'User' : principalType
@@ -388,6 +391,19 @@ resource userAiUser 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roleAzureAiUser)
     principalId: principalId
     principalType: effectivePrincipalType
+  }
+}
+
+// App users (a group) -> Foundry data plane. The grounded synthesis runs the model AS THE USER (OBO)
+// so answers are attributable and per-user ACL works; without Foundry User the user's token 403s on
+// inference. Group-scoped so every app user is covered by one assignment. Empty skips (single-user/dev).
+resource appUsersToFoundry 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(appUsersGroupId)) {
+  name: guid(account.id, appUsersGroupId, roleAzureAiUser)
+  scope: account
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roleAzureAiUser)
+    principalId: appUsersGroupId
+    principalType: 'Group'
   }
 }
 
