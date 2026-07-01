@@ -191,7 +191,7 @@ Create `.cockpit-acl-poc.json` = `{ "<canonical-component-key>": ["confidential"
 
 - [ ] **Step 2: Write the failing verification test (infra-gated)**
 
-Create `eval/cockpit_acl_stamp_test.py`: after stamping, GET the index and assert (a) a `groups` field exists with `permissionFilter=="groupIds"`, (b) `permissionFilterOption=="enabled"`, (c) the confidential doc's `groups` contains the resolved object-id of `cockpit-confidential`, (d) at least one public doc has the default group. Without `AZURE_SEARCH_ENDPOINT` + creds → print `SKIP` + `sys.exit(0)`.
+Create `eval/cockpit_acl_stamp_test.py`: after stamping, GET the index and assert (a) a `groups` field exists with `permissionFilter=="groupIds"`, (b) `permissionFilterOption=="enabled"`, (c) the confidential doc's `groups` contains the resolved object-id of the `confidential` group (`tenant_config().acl_group_map["confidential"]`), (d) at least one public doc has the `public` group. Without `AZURE_SEARCH_ENDPOINT` + creds → print `SKIP` + `sys.exit(0)`.
 
 - [ ] **Step 3: Run it to verify it fails (or SKIPs)**
 
@@ -200,7 +200,7 @@ Expected: FAIL (no `groups` field yet) with live creds; SKIP without.
 
 - [ ] **Step 4: Run the re-ingest with ACL enabled (runbook)**
 
-Ensure `tenant_config().acl_group_map` includes `cockpit-confidential` + the default group → object-ids, then:
+Ensure the demo-trio group object-ids are set so `tenant_config().acl_group_map` resolves `confidential` (`cockpit_acl_confidential_group`) and `public` (`cockpit_acl_public_group`), then:
 ```bash
 cd apps/backend
 COCKPIT_DOCBUNDLES=/path/to/aap-kb/apps/agent/docbundles \
