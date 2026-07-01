@@ -210,22 +210,34 @@ async def stream_grounded_agui(body: dict, domain: GroundedDomain) -> AsyncGener
     )
     sources: list[dict] = []
     seen: set[str] = set()
+    # Two distinct identities: the model call runs AS THE USER (OBO → no 403 on inference), but SEARCH
+    # access (the MCP tool `authorization` / the direct-search primary Authorization) uses the APP
+    # identity, which holds Search Index Data Reader. The user's token can't be the search primary —
+    # end users have no search RBAC; it's ONLY the per-user ACL header (x-ms-query-source-authorization).
+    from azure.identity.aio import DefaultAzureCredential as _AppCredential
+
+    app_credential = _AppCredential()
     try:
-        search_token = (await credential.get_token(_SEARCH_SCOPE)).token
+        app_search_token = (await app_credential.get_token(_SEARCH_SCOPE)).token  # app MI: Search Index Data Reader
         client = proj.get_openai_client()
         client = await client if inspect.isawaitable(client) else client
 
         if domain.acl:
-            # Per-user ACL path: retrieve authorized docs via direct search, then synthesize from them.
+            # Per-user ACL path: retrieve authorized docs via direct search (primary=app, ACL header=user),
+            # then synthesize from ONLY those docs.
             from app.core.auth import current_user
 
-            user_token = search_token if (settings.auth_enabled and current_user() is not None) else None
-            docs = await _direct_search_authorized(domain, user_text, search_token, user_token)
+            user_search_token = (
+                (await credential.get_token(_SEARCH_SCOPE)).token
+                if (settings.auth_enabled and current_user() is not None)
+                else None
+            )
+            docs = await _direct_search_authorized(domain, user_text, app_search_token, user_search_token)
             sources = [{"index": d["index"], "source": d["source"], "url": d["url"]} for d in docs]
             kwargs = build_synthesis_kwargs(user_text, domain, docs, model=cfg.foundry_model)
         else:
             # Single-audience path: inline MCP tool (native url_citation annotations, collected below).
-            kwargs = build_responses_kwargs(user_text, domain, model=cfg.foundry_model, search_token=search_token)
+            kwargs = build_responses_kwargs(user_text, domain, model=cfg.foundry_model, search_token=app_search_token)
 
         stream = await client.responses.create(**kwargs)
         async for ev in stream:
@@ -249,6 +261,6 @@ async def stream_grounded_agui(body: dict, domain: GroundedDomain) -> AsyncGener
     finally:
         import contextlib
 
-        for obj in (proj, credential):
+        for obj in (proj, credential, app_credential):
             with contextlib.suppress(Exception):
                 await obj.close()
