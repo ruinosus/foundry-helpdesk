@@ -44,7 +44,7 @@ var backendAppName = 'ca-backend-${resourceToken}'
 var webAppName = 'ca-web-${resourceToken}'
 
 resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
-  name: 'log-helpdesk-${resourceToken}'
+  name: 'log-assured-${resourceToken}'
   location: location
   tags: tags
   properties: {
@@ -54,7 +54,7 @@ resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
 }
 
 resource env 'Microsoft.App/managedEnvironments@2024-03-01' = {
-  name: 'cae-helpdesk-${resourceToken}'
+  name: 'cae-assured-${resourceToken}'
   location: location
   tags: tags
   properties: {
@@ -127,6 +127,9 @@ resource backendApp 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'FOUNDRY_MODEL', value: foundryModel }
             { name: 'AZURE_SEARCH_ENDPOINT', value: azureSearchEndpoint }
             { name: 'AZURE_SEARCH_KNOWLEDGE_BASE', value: azureSearchKnowledgeBase }
+            // selfwiki domain (grounded on this repo's deep-wiki). Setting this mounts /selfwiki;
+            // ingest selfwiki-kb so retrieval has data (build_selfwiki_agent tolerates a missing KB at boot).
+            { name: 'SELFWIKI_SEARCH_KNOWLEDGE_BASE', value: 'selfwiki-kb' }
             { name: 'FRONTEND_ORIGIN', value: 'https://${webFqdn}' }
             { name: 'AZURE_CLIENT_ID', value: appIdentityClientId }
             { name: 'ENTRA_TENANT_ID', value: entraTenantId }

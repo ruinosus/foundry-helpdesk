@@ -18,7 +18,7 @@ from app.core import auth as _auth
 from app.core.auth import _current_user, azure_scheme, require_role, require_user
 from app.core.onboarding import onboarding_guard
 from app.core.settings import settings
-from app.core.tenant import TenantConfig, current_tenant_id, DOMAIN_IDS
+from app.core.tenant import TenantConfig, current_tenant_id, DOMAIN_IDS, domains_for_tier
 from app.core.tenant_store import (
     Connection, TenantRecord, validate_kind, with_connection, without_connection,
 )
@@ -79,14 +79,24 @@ def get_tenant(user: User = Security(azure_scheme)):  # type: ignore[arg-type]
     return {"onboarded": True, "record": _redacted(rec)}  # never echo secrets
 
 
+class OnboardBody(BaseModel):
+    tier: str | None = None
+
+
 @router.post("/onboard")
-def onboard(user: User = Depends(onboarding_guard)):
-    """Create the tenant record (idempotent). Gated by Admin + allow-list, not resolution."""
+def onboard(body: OnboardBody | None = None, user: User = Depends(onboarding_guard)):
+    """Create the tenant record (idempotent). Gated by Admin + allow-list, not resolution.
+
+    Seeds enabled_domains from the tier (ADR-010 Open Q#3); a bodyless POST → tier None →
+    "shared" → all domains, identical to before.
+    """
+    body = body or OnboardBody()
     store = _store()
     tid = getattr(user, "tid", None)
     if store.get(tid) is None:
-        store.put(TenantRecord(tid=tid, name=tid, tier="shared", status="active",
-                               data_plane=TenantConfig(), enabled_domains=DOMAIN_IDS))
+        tier = body.tier or "shared"
+        store.put(TenantRecord(tid=tid, name=tid, tier=tier, status="active",
+                               data_plane=TenantConfig(), enabled_domains=domains_for_tier(tier)))
     return {"onboarded": True}
 
 

@@ -49,13 +49,13 @@ param searchSkuName string = 'basic'
 @description('Region for Azure AI Search. Empty falls back to the main location; override if a region is out of Search capacity.')
 param searchLocation string = ''
 
-var accountName = 'aif-helpdesk-${resourceToken}'
-var projectName = 'helpdesk-concierge'
-var searchName = 'srch-helpdesk-${resourceToken}'
-var registryName = 'acrhelpdesk${resourceToken}'
-var storageName = 'sthelpdesk${resourceToken}'
+var accountName = 'aif-assured-${resourceToken}'
+var projectName = 'foundry-assured'
+var searchName = 'srch-assured-${resourceToken}'
+var registryName = 'acrassured${resourceToken}'
+var storageName = 'stassured${resourceToken}'
 var corpusContainerName = 'corpus'
-var dataShareName = 'helpdesk-data'
+var dataShareName = 'assured-data'
 
 // Built-in role definition GUIDs (stable Azure identifiers).
 var roleAzureAiUser = '53ca6127-db72-4b80-b1b0-d745d6d5456d' // Azure AI User / Foundry User (Foundry data plane)
@@ -134,7 +134,7 @@ resource embeddingDeployment 'Microsoft.CognitiveServices/accounts/deployments@2
 // ---------------------------------------------------------------------------
 
 resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
-  name: 'log-helpdesk-${resourceToken}'
+  name: 'log-assured-${resourceToken}'
   location: location
   tags: tags
   properties: {
@@ -144,7 +144,7 @@ resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
 }
 
 resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
-  name: 'appi-helpdesk-${resourceToken}'
+  name: 'appi-assured-${resourceToken}'
   location: location
   tags: tags
   kind: 'web'
@@ -256,7 +256,7 @@ resource registry 'Microsoft.ContainerRegistry/registries@2023-11-01-preview' = 
 // publishing to Azure. Pulls images from ACR and (for the backend) calls Foundry
 // + the search KB as itself. Created here so all its RBAC lives with the targets.
 resource appIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
-  name: 'id-helpdesk-app-${resourceToken}'
+  name: 'id-assured-app-${resourceToken}'
   location: location
   tags: tags
 }
@@ -391,6 +391,15 @@ resource userAiUser 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!
 // ---------------------------------------------------------------------------
 
 output FOUNDRY_PROJECT_ENDPOINT string = 'https://${accountName}.services.ai.azure.com/api/projects/${projectName}'
+// ARM resource id of the Foundry project — azd reads this (AZURE_AI_PROJECT_ID) to resolve the
+// target project when deploying hosted agents (azure.ai.agent). Surfacing it as an output keeps it
+// in lockstep with the account/project names — so a rename never leaves a stale manually-set value.
+output AZURE_AI_PROJECT_ID string = project.id
+// ARM ids of the account + search — read by the postdeploy hook (scripts/hook-postdeploy.sh) to
+// grant each hosted agent's deploy-time instance identity its runtime roles (Azure AI User on the
+// account, Search Index Data Reader on search), which Bicep can't pre-assign (identity is minted at deploy).
+output AZURE_AI_ACCOUNT_ID string = account.id
+output AZURE_SEARCH_ID string = search.id
 output AZURE_AI_ACCOUNT_ENDPOINT string = account.properties.endpoint
 output AZURE_AI_OPENAI_ENDPOINT string = 'https://${accountName}.openai.azure.com'
 output FOUNDRY_MODEL string = modelDeploymentName

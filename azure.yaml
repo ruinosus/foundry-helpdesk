@@ -1,8 +1,23 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
 
-name: foundry-helpdesk
+name: foundry-assured
 metadata:
-    template: foundry-helpdesk@0.1.0
+    template: foundry-assured@0.1.0
+
+# azd lifecycle hooks — automate the steps Bicep can't, so `azd up` is one-shot.
+# postprovision: push local env (NEXT_PUBLIC_*/ENTRA_*) for the web build + optional KB bootstrap.
+# postdeploy: grant each hosted agent's deploy-time instance identity its runtime roles (the 403 fix).
+# continueOnError: a hook (e.g. an RBAC perms gap) reports but never fails an otherwise-good deploy.
+hooks:
+    postprovision:
+        shell: sh
+        continueOnError: true
+        run: ./scripts/hook-postprovision.sh
+    postdeploy:
+        shell: sh
+        continueOnError: true
+        run: ./scripts/hook-postdeploy.sh
+
 services:
     backend:
         project: apps/backend
@@ -25,6 +40,18 @@ services:
             startupCommand: python main.py
     helpdesk-concierge:
         project: apps/hosted-agent
+        host: azure.ai.agent
+        language: docker
+        docker:
+            remoteBuild: true
+        config:
+            container:
+                resources:
+                    cpu: "0.5"
+                    memory: 1Gi
+            startupCommand: python main.py
+    platform-concierge:
+        project: apps/hosted-platform
         host: azure.ai.agent
         language: docker
         docker:

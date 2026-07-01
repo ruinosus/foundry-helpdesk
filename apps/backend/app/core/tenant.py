@@ -182,6 +182,20 @@ def current_tenant_id() -> str | None:
 DOMAIN_IDS: tuple[str, ...] = ("helpdesk", "cockpit", "selfwiki", "platform")
 
 
+# Per-tier domain entitlement (ADR-010 Open Q#3). Unknown/unset tier → all domains (non-breaking;
+# the request-time require_domain gate stays fail-closed regardless of the seed).
+TIER_DOMAINS: dict[str, tuple[str, ...]] = {
+    "shared": DOMAIN_IDS,
+    # "starter": illustrative only — not wired to any product tier yet (the ADR-010 hook).
+    # Kept to exercise the non-trivial branch + the ⊆ DOMAIN_IDS subset test.
+    "starter": ("helpdesk", "selfwiki"),
+}
+
+
+def domains_for_tier(tier: str | None) -> tuple[str, ...]:
+    return TIER_DOMAINS.get(tier or "", DOMAIN_IDS)
+
+
 def require_domain(domain_id: str):
     """Shared-mode per-tenant entitlement gate (ADR-010). Fail-closed: 403 unless the
     resolved tenant's enabled_domains contains domain_id.

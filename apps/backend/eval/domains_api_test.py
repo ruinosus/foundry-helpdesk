@@ -30,7 +30,7 @@ def main() -> int:
     _auth._tenant_store = store
     tapi.current_tenant_id = lambda: "t-1"  # type: ignore[assignment]  # stub the resolved tenant
 
-    tapi.onboard(SimpleNamespace(tid="t-1"))
+    tapi.onboard(tapi.OnboardBody(), SimpleNamespace(tid="t-1"))
     rec = store.get("t-1")
     check("onboard seeds enabled_domains=DOMAIN_IDS", rec.enabled_domains == DOMAIN_IDS)
 

@@ -10,6 +10,8 @@ from __future__ import annotations
 import asyncio
 import sys
 
+import app.services.hosted as hosted
+from app.core.tenant import TenantConfig
 from app.services.hosted import stream_platform_agui
 
 
@@ -27,7 +29,19 @@ def main() -> int:
             out.append(chunk)
         return out
 
-    chunks = asyncio.run(collect())
+    # Force the no-endpoint clean-error path deterministically, regardless of the local .env.
+    # stream_platform_agui now makes a REAL httpx POST when an endpoint is configured; without
+    # this patch a dev machine with FOUNDRY_PROJECT_ENDPOINT set would make a live network call
+    # (going green only because Azure 500s). Patch the IMPORTING namespace
+    # (app.services.hosted.tenant_config, NOT app.core.tenant.tenant_config — hosted.py imported
+    # the symbol by value) so _platform_invocations_url() returns "" and the bridge takes the
+    # clean RuntimeError -> RUN_ERROR branch with zero network.
+    _orig = hosted.tenant_config
+    hosted.tenant_config = lambda: TenantConfig(foundry_project_endpoint="")
+    try:
+        chunks = asyncio.run(collect())
+    finally:
+        hosted.tenant_config = _orig
     blob = "".join(chunks)
     check("emits a RUN_STARTED", "RUN_STARTED" in blob or "RunStarted" in blob)
     check("emits a terminal RUN_FINISHED or RUN_ERROR",
