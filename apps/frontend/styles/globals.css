@@ -527,6 +527,10 @@ table.evals tr:last-child td {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  /* Contained scroll box: many sources scroll here instead of pushing "Garantias" off-screen. */
+  max-height: 42vh;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 .source-chip {
   display: inline-flex;

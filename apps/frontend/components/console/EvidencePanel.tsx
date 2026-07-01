@@ -35,7 +35,9 @@ function extractSources(text: string): Source[] {
   };
   for (const m of text.matchAll(FILE_RE)) add(m[0].replace(/^\.\//, ""), "file");
   for (const m of text.matchAll(COMPONENT_RE)) add(m[0], "component");
-  return out.slice(0, 10);
+  // Show every distinct cited source — the panel scrolls (.evidence { overflow-y:auto }), so no
+  // arbitrary cap (a low cap silently dropped sources when an answer cited many).
+  return out;
 }
 
 const GUARANTEES = [
@@ -80,7 +82,9 @@ export function EvidencePanel({ domain }: { domain: Domain }) {
   return (
     <aside className="evidence">
       <div className="evidence-section">
-        <div className="evidence-title">Fontes</div>
+        <div className="evidence-title">
+          Fontes{sources.length > 0 ? ` (${sources.length})` : ""}
+        </div>
         {sources.length > 0 ? (
           <div className="evidence-sources">
             {sources.map((s) => (
