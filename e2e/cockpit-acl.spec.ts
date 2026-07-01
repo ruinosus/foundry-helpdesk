@@ -40,6 +40,17 @@ async function shot(page: Page, name: string) {
 async function askCockpitAs(browser: Browser, upn: string, tag: string): Promise<string> {
   const ctx = await browser.newContext();
   const page = await ctx.newPage();
+  // Diagnostics: capture console errors + the copilotkit run-stream body so a missing answer is
+  // explained (backend RunError vs slow render) without guessing.
+  const diag: string[] = [];
+  page.on("console", (m) => { if (m.type() === "error") diag.push(`console.error: ${m.text()}`); });
+  page.on("response", async (r) => {
+    if (/copilotkit/i.test(r.url()) && r.request().method() === "POST") {
+      const body = await r.text().catch(() => "");
+      const errs = body.split("\n").filter((l) => /RUN_ERROR|error|403|401|exception|denied/i.test(l)).slice(0, 6);
+      if (errs.length) diag.push(`run-stream errors:\n${errs.join("\n")}`);
+    }
+  });
   try {
     await page.goto("/");
     const signIn = page.getByRole("button", { name: /sign in with microsoft/i });
@@ -75,12 +86,17 @@ async function askCockpitAs(browser: Browser, upn: string, tag: string): Promise
     await composer.fill(PROBE);
     await composer.press("Enter");
 
-    // Wait for citations to settle, then capture the sources panel + the last answer text.
-    await page.locator(".citation, .source-chip").first().waitFor({ state: "visible", timeout: 90_000 }).catch(() => {});
-    await page.waitForTimeout(2500);
+    // Wait for the ANSWER to render (grounded synthesis: OBO + direct search + gpt-5-mini, cold ~60-120s),
+    // then for citations to settle. Waiting on the assistant text (not just .citation) also covers B,
+    // whose "não sei" answer has no citation.
+    const assistant = page.locator(".copilotKitAssistantMessage, [data-message-role='assistant']").last();
+    await assistant.waitFor({ state: "visible", timeout: 150_000 }).catch(() => {});
+    await page.locator(".citation").first().waitFor({ state: "visible", timeout: 20_000 }).catch(() => {});
+    await page.waitForTimeout(2000);
     await shot(page, `cockpit-${tag}`);
+    if (diag.length) fs.writeFileSync(path.join(STEPS_DIR, `diag-${tag}.log`), diag.join("\n\n"), "utf8");
     const evidence = (await page.locator(".evidence").innerText().catch(() => "")) || "";
-    const answer = (await page.locator("[data-message-role='assistant'], .copilotKitAssistantMessage").last().innerText().catch(() => "")) || "";
+    const answer = (await assistant.innerText().catch(() => "")) || "";
     return `${evidence}\n${answer}`.toLowerCase();
   } finally {
     await ctx.close();
@@ -91,6 +107,7 @@ test.describe.configure({ mode: "serial" });
 
 test("cockpit ACL round-trip — A sees the confidential doc, B does not", async ({ browser }) => {
   test.skip(!PASS || !USER_A || !USER_B, "set COCKPIT_TEST_USER_A/B + COCKPIT_TEST_PASSWORD to run");
+  test.setTimeout(10 * 60 * 1000); // two full logins (MFA) + two cold grounded answers
 
   const textA = await askCockpitAs(browser, USER_A, "A-cleared");
   const textB = await askCockpitAs(browser, USER_B, "B-public");
